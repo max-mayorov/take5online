@@ -7,7 +7,11 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev:worker": "pnpm --filter @take5/worker dev",
+    "dev:web": "pnpm --filter @take5/web dev",
+    "build": "pnpm --filter @take5/web build",
     "test": "pnpm -r test",
+    "e2e": "pnpm --filter @take5/e2e e2e",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

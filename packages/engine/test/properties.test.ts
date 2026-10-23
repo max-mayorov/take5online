@@ -42,7 +42,12 @@ function playGame(
   let { state } = newGame(params, params.seed);
   for (let steps = 0; state.phase !== 'gameOver'; steps++) {
     if (steps > 10_000) throw new Error('Game did not end');
-    const seats = waitingOn(state);
+    // Random players sometimes change a Pick they already made.
+    const changers = state.picks.flatMap((card, seat) => (card === null ? [] : [seat]));
+    const seats =
+      params.strategy === 'random' && changers.length > 0 && rng() < 0.2
+        ? changers
+        : waitingOn(state);
     const seat = seats[Math.floor(rng() * seats.length)]!;
     const action =
       params.strategy === 'bot' ? botAction(state, seat)! : randomAction(state, seat, rng);
@@ -58,8 +63,9 @@ function randomAction(state: GameState, seat: number, rng: () => number): Action
   if (state.phase === 'choosingRow') {
     return { type: 'chooseRow', seat, row: Math.floor(rng() * ROW_COUNT) };
   }
-  const hand = state.hands[seat]!;
-  return { type: 'pick', seat, card: hand[Math.floor(rng() * hand.length)]! };
+  const current = state.picks[seat];
+  const options = current == null ? state.hands[seat]! : [...state.hands[seat]!, current];
+  return { type: 'pick', seat, card: options[Math.floor(rng() * options.length)]! };
 }
 
 function cardsInPlay(state: GameState): Card[] {

@@ -30,7 +30,7 @@ behind the bigger decisions lives in [adr/](./adr/).
   - other multiples of 5 → 2
   - everything else → 1
 - 2–10 Seats. Each Round: shuffle, deal 10 Cards to every Seat, start the four Rows with one Card each.
-- Each Turn every Seat Picks one Card in secret. All Picks are Revealed together and Placed in ascending order:
+- Each Turn every Seat Picks one Card in secret, and may change it until the last Seat has Picked, which triggers the Reveal. All Picks are Revealed together and Placed in ascending order:
   - A Card goes at the end of the Row whose last Card is the highest one below it.
   - If it would be the Sixth Card there, the Seat Takes the five Cards and the played Card starts the Row.
   - If it is a Low Card, the Seat chooses any Row to Take, and the Card starts that Row. Placement pauses while they choose.

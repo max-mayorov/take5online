@@ -57,12 +57,7 @@ export type GameEvent =
   | { type: 'gameEnded'; scores: number[]; winners: number[] };
 
 export type GameError =
-  | 'invalid_seat'
-  | 'wrong_phase'
-  | 'already_picked'
-  | 'card_not_in_hand'
-  | 'not_your_choice'
-  | 'invalid_row';
+  'invalid_seat' | 'wrong_phase' | 'card_not_in_hand' | 'not_your_choice' | 'invalid_row';
 
 export type ApplyResult =
   { ok: true; state: GameState; events: GameEvent[] } | { ok: false; error: GameError };

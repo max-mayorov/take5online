@@ -62,12 +62,29 @@ describe('picking', () => {
     expect(applyAction(state, action)).toEqual({ ok: false, error });
   });
 
-  it('rejects a second Pick in the same Turn', () => {
+  it('lets a Seat change its Pick until the Reveal', () => {
+    const { state: next, events } = play(
+      state,
+      { type: 'pick', seat: 0, card: 10 },
+      { type: 'pick', seat: 0, card: 50 },
+    );
+    expect(next.picks).toEqual([50, null]);
+    expect(next.hands[0]).toEqual([10]);
+    expect(events).toEqual([
+      { type: 'picked', seat: 0 },
+      { type: 'picked', seat: 0 },
+    ]);
+    const { state: revealed } = play(next, { type: 'pick', seat: 1, card: 60 });
+    expect(revealed.board).toEqual([[1], [20], [30], [40, 50, 60]]);
+  });
+
+  it('keeps the earlier Pick when a change is rejected', () => {
     const { state: next } = play(state, { type: 'pick', seat: 0, card: 10 });
-    expect(applyAction(next, { type: 'pick', seat: 0, card: 50 })).toEqual({
+    expect(applyAction(next, { type: 'pick', seat: 0, card: 60 })).toEqual({
       ok: false,
-      error: 'already_picked',
+      error: 'card_not_in_hand',
     });
+    expect(next.picks).toEqual([10, null]);
   });
 });
 

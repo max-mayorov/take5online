@@ -77,8 +77,13 @@ export function waitingOn(state: GameState): number[] {
 function pick(state: GameState, seat: number, card: Card, events: GameEvent[]): GameError | null {
   if (!isSeat(state, seat)) return 'invalid_seat';
   if (state.phase !== 'picking') return 'wrong_phase';
-  if (state.picks[seat] !== null) return 'already_picked';
   const hand = state.hands[seat]!;
+  // A Pick may be changed until the Reveal: the earlier Card goes back into the Hand.
+  const previous = state.picks[seat];
+  if (previous != null) {
+    hand.push(previous);
+    hand.sort((a, b) => a - b);
+  }
   const index = hand.indexOf(card);
   if (index === -1) return 'card_not_in_hand';
 
