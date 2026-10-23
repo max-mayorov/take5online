@@ -2,6 +2,7 @@ import type { GameView } from '@take5/engine';
 import type { ClientIntent, RoomView } from '@take5/protocol';
 import { Board } from './Board';
 import type { ReactionShown } from './connection';
+import { Countdown } from './Countdown';
 import { Hand } from './Hand';
 import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
@@ -18,9 +19,10 @@ interface Props {
   onSkip: () => void;
   reactions: ReactionShown[];
   send: (intent: ClientIntent) => void;
+  onLeave: () => void;
 }
 
-export function GameTable({ view, game, frame, onSkip, reactions, send }: Props) {
+export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave }: Props) {
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
   const table = frame?.table ?? tableFrom(game);
   const animating = frame !== null;
@@ -48,7 +50,7 @@ export function GameTable({ view, game, frame, onSkip, reactions, send }: Props)
       </div>
 
       <div className="table-seats">
-        <SeatStrip view={view} game={game} table={table} reactions={reactions} />
+        <SeatStrip view={view} game={game} table={table} reactions={reactions} send={send} />
         {watching.length > 0 && (
           <p className="watching muted">
             {t.spectators}:{' '}
@@ -60,6 +62,9 @@ export function GameTable({ view, game, frame, onSkip, reactions, send }: Props)
             ))}
           </p>
         )}
+        <button className="quiet small leave-table" onClick={onLeave}>
+          {t.leave}
+        </button>
       </div>
 
       <Board
@@ -80,6 +85,7 @@ export function GameTable({ view, game, frame, onSkip, reactions, send }: Props)
         <p className={`prompt ${iMustChoose ? 'urgent' : ''}`} aria-live="polite">
           {prompt}
         </p>
+        {!animating && <Countdown deadline={view.deadline} now={view.now} />}
       </div>
 
       {mySeat !== null && game.phase !== 'gameOver' && (

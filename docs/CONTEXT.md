@@ -23,7 +23,7 @@ A person occupying a Seat.
 _Avoid_: User, account, member
 
 **Bot**:
-The computer occupant of a Seat, either seated deliberately or taking over for an Away Player.
+The computer occupant of a Seat, seated deliberately or given the Seat of a Player who left; it also acts for an Away or slow Player.
 _Avoid_: AI, CPU, computer player
 
 **Spectator**:
@@ -137,11 +137,11 @@ _Avoid_: Points, penalty
 ### Timing
 
 **Pick Timer**:
-The per-Room time limit on making a Pick or a Low Card Row choice: off, 30s, or 60s (default).
+The per-Room time limit on making a Pick or a Low Card Row choice: off (default), 30s, or 60s.
 _Avoid_: Turn timer, clock, countdown
 
 **Grace Period**:
-The 60 seconds an Away Player is waited for, when the Pick Timer is off, before a Bot acts for them.
+The 60 seconds an Away Player is waited for before a Bot acts for them (sooner if the Pick Timer runs out first).
 _Avoid_: Timeout, reconnect window
 
 ## Relationships

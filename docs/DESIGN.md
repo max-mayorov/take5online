@@ -73,11 +73,15 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 ## Server authority and protocol
 
 - The server shuffles, deals, validates and resolves everything. Clients only send _intents_
-  (`pick {card}`, `chooseRow {row}`, `react {emoji}`, Host commands). See
+  (`pick {card}`, `chooseRow {row}`, `react {emoji}`, `takeSeat {seat}`, and the Host's
+  `settings {endScore?, pickTimer?}`, `addBot`, `removeBot {memberId}`, `kick {memberId}`,
+  `replaceWithBot {memberId}`). See
   [ADR-0005](./adr/0005-authoritative-redacted-snapshots.md).
 - After every change the server sends each connection a **full snapshot redacted to what that
   connection may see** (own Hand only; other Seats show "has picked" but not what), plus an ordered
   **event list** for the client to animate (e.g. `placed {card, row}`, `took {seat, row, bullHeads}`).
+  The snapshot carries the Pick Timer `deadline` (epoch ms, or null) and the server's `now`, so
+  clients can show a countdown that is right even when their clock is off.
 - All messages are JSON validated by Zod on both ends. Every message carries the protocol version;
   on mismatch the server tells the client to reload (covers tabs left open across a deploy).
 - The engine's RNG is seeded per Round; the seed is stored so any Game can be replayed in tests.
@@ -104,17 +108,43 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 3. **Results**: final Scores, winner(s), and **Session Totals** across all Games in this Room. Host can start a **Rematch**.
 
 - If the Host leaves the Room or stays Away past the Grace Period, Host passes to the next
-  connected Player in Seat order.
+  connected Player in Seat order (wrapping around), or failing that to a connected Spectator.
+  Bots are never Host. With nobody else connected, an Away Host stays Host.
 - A Room is deleted (storage wiped via alarm) after **24 hours without activity**.
 
 ## Timers, disconnects and Bots
 
-- **Pick Timer**: off / 30s / 60s, default 60s. It applies to Picks and to Low Card Row choices.
+- **Pick Timer**: off / 30s / 60s, default off. It applies to Picks and to Low Card Row choices.
   When it runs out, the Bot acts for that Seat.
-- **Away**: a Player whose sockets are all closed. Their Seat is held. When the Pick Timer is on,
-  it covers them; when it is off, the Bot acts for them after the **60s Grace Period**.
+- **Away**: a Player whose sockets are all closed. Their Seat is held. The Bot acts for them once
+  they have been Away for the **60s Grace Period**, or earlier if the Pick Timer runs out first.
   On return they reclaim the Seat and play from the current Turn.
 - The Host can replace an Away Player with a Bot, or kick them.
+- **Bot Seats**: a Bot is a Room member with `bot: true`, no token and no connection, named
+  "Bot 1", "Bot 2", … (lowest free number; people can't take such a Nickname). The Host adds and removes
+  Bots in the Lobby and Results. Mid-Game a Seat becomes a new Bot's when its Player leaves the
+  Room, is kicked, or is replaced while Away (a replaced Player stays on as a Spectator; a kicked
+  one is removed and their token stops working). Any Spectator may take over a Bot's Seat, in any
+  phase, along with its Hand and Score; the Bot then leaves the Room. Session Totals key a Bot's
+  row by its name, so "Bot 1" keeps one row across Games.
+- **Who the Bot acts for, and when** (`tick` in `apps/worker/src/room.ts`, run after every change
+  and on every alarm): a Bot Seat after a short "thinking" delay of 1–2 s per move; any Seat still
+  waiting when the Pick Timer runs out; and an Away Player's Seat once they have been Away for the
+  Grace Period (then on every decision until they return), whichever of those last two comes
+  first. Moves made on a timeout or after the Grace Period are instant. The thinking delay varies by
+  Seat and decision but is derived from the Game's seed, so a Game replays the same way and tests
+  stay deterministic. All of these count from when the Game reached the current decision: each
+  Turn's Picks are one decision, and each Low Card Row choice another. While nobody at all is
+  connected the Game stands still, and the decision's clock restarts when someone returns: a table
+  everyone walked away from doesn't play itself to the end.
+- **Alarms**: a Durable Object has one alarm, so it is always set to the Room's next wakeup, the
+  earliest of the Bot's next move for any Seat the Game waits on (thinking delay, Pick Timer
+  deadline or Grace Period end, as above), the end of an Away Host's Grace Period, and expiry.
+  `alarm()` expires the Room or runs `tick`, then re-arms. Everything it needs (the current
+  `decision` and when it began, `awaySince` per member) lives in the
+  persisted Room, so it survives eviction and hibernation. Presence is re-derived from the open
+  WebSockets on every change, so a member whose sockets vanished without a close event is marked
+  Away the next time anything happens.
 - **Bot** (greedy, in the engine; see [ADR-0006](./adr/0006-bot-takes-over.md)):
   - Picks the Card with the lowest expected cost: the Bull-heads of the Row it would Take as a
     Sixth Card or Low Card, otherwise a small risk score based on how full the target Row is and

@@ -1,25 +1,27 @@
 import type { GameView } from '@take5/engine';
-import type { RoomView } from '@take5/protocol';
+import type { ClientIntent, RoomView } from '@take5/protocol';
 import { BullIcon } from './Card';
 import type { ReactionShown } from './connection';
 import { Floaters } from './Reactions';
 import type { TableState } from './reveal';
-import { t } from './strings';
+import { SeatActions } from './SeatActions';
+import { t, tControls } from './strings';
 
 interface Props {
   view: RoomView;
   game: GameView;
   table: TableState;
   reactions: ReactionShown[];
+  send: (intent: ClientIntent) => void;
 }
 
 /** One compact chip per Seat: Nickname, Score, Penalty Pile, whether it has Picked, Away. */
-export function SeatStrip({ view, game, table, reactions }: Props) {
+export function SeatStrip({ view, game, table, reactions, send }: Props) {
   return (
     <ol className="seats" aria-label={t.seats}>
-      {view.gameSeats.map(({ memberId, nickname }, seat) => {
+      {view.gameSeats.map(({ memberId, nickname, bot }, seat) => {
         const member = view.members.find((m) => m.id === memberId);
-        const away = member ? !member.connected : false;
+        const away = member && !member.bot ? !member.connected : false;
         const choosing = table.choosing === seat;
         const picked = game.seats[seat]?.picked ?? false;
         const score = table.scores[seat] ?? 0;
@@ -30,11 +32,15 @@ export function SeatStrip({ view, game, table, reactions }: Props) {
           choosing && 'choosing',
           picked && 'picked',
           away && 'away',
+          bot && 'bot',
         ];
         return (
           <li key={memberId} className={classes.filter(Boolean).join(' ')} data-seat={seat}>
             <Floaters reactions={reactions} memberId={memberId} name={nickname} />
-            <span className="seat-name">{nickname}</span>
+            <span className="seat-name">
+              {nickname}
+              {bot && <span className="sr-only"> ({tControls.bot})</span>}
+            </span>
             <span className="seat-info" aria-label={t.scoreLabel(nickname, score, pile)}>
               <span className="seat-score">
                 <BullIcon />
@@ -59,6 +65,7 @@ export function SeatStrip({ view, game, table, reactions }: Props) {
                 </span>
               ) : null}
             </span>
+            <SeatActions view={view} memberId={memberId} send={send} />
           </li>
         );
       })}

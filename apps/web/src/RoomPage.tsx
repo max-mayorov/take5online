@@ -4,9 +4,11 @@ import { useState, type FormEvent } from 'react';
 import { BullIcon } from './Card';
 import { useRoom } from './connection';
 import { GameTable } from './GameTable';
+import { HostControls } from './HostControls';
 import { Floaters, ReactionPicker } from './Reactions';
+import { SeatActions } from './SeatActions';
 import { setMuted, useMuted } from './sound';
-import { t } from './strings';
+import { t, tControls } from './strings';
 import { useReveal } from './useReveal';
 
 type Room = ReturnType<typeof useRoom>;
@@ -14,10 +16,11 @@ type Room = ReturnType<typeof useRoom>;
 export function RoomPage({ code, onExit }: { code: string; onExit: () => void }) {
   const room = useRoom(code);
 
-  if (room.status === 'notFound' || room.status === 'left') {
+  if (room.status === 'notFound' || room.status === 'left' || room.status === 'kicked') {
     return (
       <main className="center">
         {room.status === 'notFound' && <p>{t.roomNotFound}</p>}
+        {room.status === 'kicked' && <p>{tControls.kicked}</p>}
         <button onClick={onExit}>{t.backHome}</button>
       </main>
     );
@@ -129,6 +132,7 @@ function Joined({ room, view }: { room: Room; view: RoomView }) {
           onSkip={skip}
           reactions={room.reactions}
           send={room.send}
+          onLeave={room.leave}
         />
       ) : (
         <div className="lobby-layout">
@@ -178,7 +182,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
           <span className="muted small">{t.shareHint}</span>
         </div>
       )}
-      <Members view={view} reactions={room.reactions} />
+      <Members view={view} reactions={room.reactions} send={room.send} />
       <div className="row wrap">
         {seated ? (
           <button onClick={() => room.send({ type: 'stand' })}>{t.stand}</button>
@@ -203,6 +207,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
               className="narrow"
             />
           </label>
+          <HostControls view={view} send={room.send} />
           <button
             className="primary big-button"
             disabled={view.seats.length < 2}
@@ -214,26 +219,38 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
         </div>
       ) : (
         <p className="muted">
-          {t.endScore} {view.settings.endScore}. {t.waitingForHost}
+          {t.endScore} {view.settings.endScore}. {tControls.pickTimerNote(view.settings.pickTimer)}{' '}
+          {t.waitingForHost}
         </p>
       )}
     </section>
   );
 }
 
-function Members({ view, reactions }: { view: RoomView; reactions: Room['reactions'] }) {
+function Members({
+  view,
+  reactions,
+  send,
+}: {
+  view: RoomView;
+  reactions: Room['reactions'];
+  send: Room['send'];
+}) {
   const label = (id: string) => {
     const member = view.members.find((m) => m.id === id)!;
     const tags = [
       id === view.hostId && t.host,
       id === view.you && t.you,
-      !member.connected && t.away,
+      member.bot && tControls.bot,
+      !member.connected && !member.bot && t.away,
     ].filter(Boolean);
+    const state = member.bot ? 'bot' : member.connected ? '' : 'away';
     return (
-      <li key={id} className={`member ${member.connected ? '' : 'away'}`}>
+      <li key={id} className={`member ${state}`}>
         <Floaters reactions={reactions} memberId={id} name={member.nickname} />
         {member.nickname}
         {tags.length > 0 && <span className="muted"> ({tags.join(', ')})</span>}
+        <SeatActions view={view} memberId={id} send={send} />
       </li>
     );
   };

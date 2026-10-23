@@ -26,6 +26,60 @@ test('two friends play a whole game', async ({ browser }) => {
   await expect(max.getByRole('button', { name: 'Play again' })).toBeVisible();
 });
 
+test('one person plays a whole game against a bot', async ({ browser }) => {
+  const page = await (await browser.newContext({ reducedMotion: 'reduce' })).newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+
+  await expect(page.getByLabel('Pick timer')).toHaveValue('0');
+  await page.getByLabel('Pick timer').selectOption('60');
+  await page.getByRole('button', { name: /Add a bot/ }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await expect(page.getByText('Players (2/10)')).toBeVisible();
+  const endScore = page.getByLabel('Game ends at');
+  await endScore.fill('10');
+  await endScore.blur();
+  await page.getByRole('button', { name: 'Start game' }).click();
+  await expect(page.locator('.hand .card-button')).toHaveCount(10);
+  await expect(page.getByRole('timer')).toHaveAccessibleName(/\d+ seconds left to pick/);
+  await expect(page.locator('.seat.bot')).toContainText('Bot 1');
+
+  // The Bot thinks for a second or two each Turn, so wait until it is Max's move each time.
+  const maxToMove = page
+    .locator('.prompt', { hasText: /^Pick a card|Tap a row/ })
+    .or(page.getByText('Game over'));
+  for (let steps = 0; !(await page.getByText('Game over').isVisible()); steps++) {
+    expect(steps).toBeLessThan(400);
+    await expect(maxToMove).toBeVisible({ timeout: 10_000 });
+    await act(page);
+  }
+  await expect(page.locator('.score-table').last()).toContainText('Bot 1');
+  await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+});
+
+test('the host can kick, and a newcomer can take over the bot that took the seat', async ({
+  browser,
+}) => {
+  const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
+  await max.getByRole('button', { name: 'Start game' }).click();
+  await expect(sam.locator('.hand .card-button')).toHaveCount(10);
+
+  await max.getByRole('button', { name: 'Options for Sam' }).click();
+  await max.getByRole('menuitem', { name: 'Kick' }).click();
+  await expect(sam.getByText('The host removed you from this room.')).toBeVisible();
+  await expect(max.locator('.seat.bot')).toContainText('Bot 1');
+
+  const kim = await (await browser.newContext({ reducedMotion: 'reduce' })).newPage();
+  await kim.goto(max.url());
+  await kim.getByLabel('Pick a nickname').fill('Kim');
+  await kim.getByRole('button', { name: 'Enter room' }).click();
+  await expect(kim.getByText('You are watching this game.')).toBeVisible();
+  await kim.getByRole('button', { name: 'Take over Bot 1’s seat' }).click();
+  await expect(kim.locator('.seat.me')).toContainText('Kim');
+  await expect(kim.locator('.hand .card-button')).not.toHaveCount(0);
+});
+
 test('a Reveal animates and can be skipped', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
   await max.getByRole('button', { name: 'Start game' }).click();
@@ -108,19 +162,26 @@ async function enter(page: Page, nickname: string) {
 
 /** Picks the leftmost Card not already Picked, and waits until the server has taken it. */
 async function pickFirst(page: Page) {
+  const turnLabel = page.getByText(/^Round \d+ · Turn/);
+  const turn = (await turnLabel.allTextContents()).join();
   const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)').first();
   const card = await button.getAttribute('data-card');
   await button.click();
-  // A Picked Card is either raised in the Hand or, once the Turn is Revealed, gone from it.
-  await expect(
-    page.locator(`.hand .card-button[aria-pressed="false"][data-card="${card}"]`),
-  ).toHaveCount(0);
+  // A Picked Card is either raised in the Hand or, once the Turn is Revealed, gone from it,
+  // unless a new Round dealt the same Card again; then the Turn label has moved on.
+  const unpicked = page.locator(`.hand .card-button[aria-pressed="false"][data-card="${card}"]`);
+  await expect(async () => {
+    const moved = (await turnLabel.allTextContents()).join() !== turn;
+    expect(moved || (await unpicked.count()) === 0).toBe(true);
+  }).toPass({ timeout: 5000 });
 }
 
 async function act(page: Page) {
   const row = page.locator('.board-row.choosable').first();
   if (await row.isVisible()) {
     await row.click();
+    // Wait for the choice to land, so the next call can't click a Row that is about to go stale.
+    await expect(page.locator('.board-row.choosable')).toHaveCount(0);
     return;
   }
   const promptLocator = page.locator('.prompt');

@@ -55,6 +55,13 @@ export class Client {
     return client;
   }
 
+  /** Resolves once every client's snapshot shows all of them, so no join broadcast is still due. */
+  static async synced(...clients: Client[]): Promise<void> {
+    for (const client of clients) {
+      while (client.latest().members.length < clients.length) await client.state();
+    }
+  }
+
   send(intent: ClientIntent | Record<string, unknown>): void {
     this.socket.send(JSON.stringify({ v: PROTOCOL_VERSION, ...intent }));
   }
