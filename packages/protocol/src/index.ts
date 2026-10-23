@@ -15,6 +15,8 @@ export const MAX_END_SCORE = 200;
 export const PICK_TIMER_OPTIONS = [0, 30, 60] as const;
 export type PickTimer = (typeof PICK_TIMER_OPTIONS)[number];
 export const DEFAULT_PICK_TIMER: PickTimer = 0;
+/** Whether Cards fly from the tray to their Rows during a Reveal. */
+export const DEFAULT_ANIMATE_CARDS = true;
 
 /** The fixed set of emoji a member may react with. */
 export const REACTIONS = ['👍', '😂', '😱', '🐮', '🎉', '😭'] as const;
@@ -58,12 +60,16 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('sit') }),
   z.object({ v, type: z.literal('stand') }),
   z.object({ v, type: z.literal('leave') }),
-  /** Host only, outside a Game. Either field may be left out to keep it as it is. */
+  /**
+   * Host only. End Score and Pick Timer only outside a Game; card animation at any time.
+   * Any field may be left out to keep it as it is.
+   */
   z.object({
     v,
     type: z.literal('settings'),
     endScore: z.optional(int(MIN_END_SCORE, MAX_END_SCORE)),
     pickTimer: z.optional(pickTimer),
+    animateCards: z.optional(z.boolean()),
   }),
   z.object({ v, type: z.literal('start') }),
   z.object({ v, type: z.literal('pick'), card }),
@@ -119,6 +125,13 @@ export interface SessionTotal {
   bullHeads: number;
 }
 
+/** The Host's choices for the next Game, shared by everyone in the Room. */
+export interface RoomSettings {
+  endScore: number;
+  pickTimer: PickTimer;
+  animateCards: boolean;
+}
+
 /** Everything one connection may see of a Room. */
 export interface RoomView {
   code: string;
@@ -129,7 +142,7 @@ export interface RoomView {
   members: MemberView[];
   /** Member ids seated for the next Game, in Seat order. */
   seats: string[];
-  settings: { endScore: number; pickTimer: PickTimer };
+  settings: RoomSettings;
   /** The current or last Game; Seat i of the Game is `gameSeats[i]`. */
   game: GameView | null;
   gameSeats: GameSeatView[];
@@ -225,7 +238,7 @@ const roomViewSchema: z.ZodMiniType<RoomView> = z.object({
     }),
   ),
   seats: z.array(z.string()),
-  settings: z.object({ endScore: count, pickTimer }),
+  settings: z.object({ endScore: count, pickTimer, animateCards: z.boolean() }),
   game: z.nullable(gameViewSchema),
   gameSeats: z.array(z.object({ memberId: z.string(), nickname: z.string(), bot: z.boolean() })),
   totals: z.array(

@@ -6,6 +6,7 @@ import { useRoom } from './connection';
 import { GameTable } from './GameTable';
 import { HostControls } from './HostControls';
 import { Floaters, ReactionPicker } from './Reactions';
+import { RulesLink } from './RulesLink';
 import { SeatActions } from './SeatActions';
 import { setMuted, useMuted } from './sound';
 import { t, tControls, tPrivacy } from './strings';
@@ -82,6 +83,7 @@ function Header({
       <h1>{t.room(code)}</h1>
       {reconnecting && <span className="badge">{t.reconnecting}</span>}
       <span className="header-tools">
+        <RulesLink className="icon-button rules-link" />
         {onReact && <ReactionPicker onReact={onReact} />}
         <button
           className="icon-button"
@@ -229,7 +231,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
       ) : (
         <p className="muted">
           {t.endScore} {view.settings.endScore}. {tControls.pickTimerNote(view.settings.pickTimer)}{' '}
-          {t.waitingForHost}
+          {tControls.animateCardsNote(view.settings.animateCards)} {t.waitingForHost}
         </p>
       )}
     </section>

@@ -1,5 +1,5 @@
 import type { GameEvent, GameView } from '@take5/engine';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { revealFrames, summarySounds, type Frame } from './reveal';
 import { playSound } from './sound';
 
@@ -25,7 +25,8 @@ export function useReveal(update: Update | null) {
   const [queue, setQueue] = useState<Frame[]>([]);
   const seen = useRef(update?.seq ?? 0);
 
-  useEffect(() => {
+  // Before paint: the render that brings a new snapshot must not show it before its Reveal.
+  useLayoutEffect(() => {
     if (!update || update.seq <= seen.current) return;
     seen.current = update.seq;
     if (!update.before) return;

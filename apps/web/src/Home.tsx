@@ -2,6 +2,7 @@ import { parseRoomCode, type CreateRoomResponse } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
 import { track } from './analytics';
 import { CardFace } from './Card';
+import { RulesLink } from './RulesLink';
 import { t, tPrivacy } from './strings';
 
 export function Home({
@@ -69,6 +70,7 @@ export function Home({
           {error}
         </p>
       )}
+      <RulesLink className="footer-link" />
       <a
         className="footer-link"
         href="/privacy"

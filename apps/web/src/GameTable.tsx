@@ -4,11 +4,12 @@ import { Board } from './Board';
 import type { ReactionShown } from './connection';
 import { Countdown } from './Countdown';
 import { Hand } from './Hand';
+import { PlaceFlight } from './PlaceFlight';
 import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
 import { tableFrom, type Frame } from './reveal';
 import { SeatStrip } from './SeatStrip';
-import { t } from './strings';
+import { t, tControls } from './strings';
 import { TakeFlight } from './TakeFlight';
 
 interface Props {
@@ -26,7 +27,10 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
   const table = frame?.table ?? tableFrom(game);
   const animating = frame !== null;
+  // While the Reveal that ends a Round plays, the next Round's Hand waits.
+  const nextDealt = table.round !== game.round;
   const mySeat = game.seat;
+  const isHost = view.hostId === view.you;
   const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
 
   let prompt: string;
@@ -41,7 +45,17 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
   return (
     <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
       <div className="table-top">
-        <span className="muted">{t.round(game.round, game.turn)}</span>
+        <span className="muted">{t.round(table.round, table.turn)}</span>
+        {isHost && (
+          <label className="row animate-toggle muted">
+            <input
+              type="checkbox"
+              checked={view.settings.animateCards}
+              onChange={(e) => send({ type: 'settings', animateCards: e.target.checked })}
+            />
+            {tControls.animateCardsShort}
+          </label>
+        )}
         {animating && (
           <button className="skip" onClick={onSkip}>
             {t.skip} ⏭
@@ -90,14 +104,15 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
 
       {mySeat !== null && game.phase !== 'gameOver' && (
         <Hand
-          hand={game.hand}
-          pick={game.pick}
-          enabled={game.phase === 'picking'}
+          hand={nextDealt ? table.hand : game.hand}
+          pick={nextDealt ? null : game.pick}
+          enabled={!nextDealt && game.phase === 'picking'}
           onPick={(card) => send({ type: 'pick', card })}
         />
       )}
 
       <TakeFlight flight={table.flight} />
+      <PlaceFlight table={table} enabled={view.settings.animateCards} />
     </section>
   );
 }

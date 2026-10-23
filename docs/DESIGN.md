@@ -85,7 +85,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 
 - The server shuffles, deals, validates and resolves everything. Clients only send _intents_
   (`pick {card}`, `chooseRow {row}`, `react {emoji}`, `takeSeat {seat}`, and the Host's
-  `settings {endScore?, pickTimer?}`, `addBot`, `removeBot {memberId}`, `kick {memberId}`,
+  `settings {endScore?, pickTimer?, animateCards?}`, `addBot`, `removeBot {memberId}`, `kick {memberId}`,
   `replaceWithBot {memberId}`). See
   [ADR-0005](./adr/0005-authoritative-redacted-snapshots.md).
 - After every change the server sends each connection a **full snapshot redacted to what that
@@ -117,7 +117,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 ## Room lifecycle
 
 1. **Lobby**: the creator is Host. People take Seats (max 10) or spectate (max 20). Host sets
-   End Score and Pick Timer, may add Bots, kick people, then presses Start (needs ≥ 2 Seats).
+   End Score, Pick Timer and card animation, may add Bots, kick people, then presses Start (needs ≥ 2 Seats).
 2. **Game**: Rounds and Turns as per the rules. People arriving mid-Game become Spectators, or may take over a Bot's Seat.
 3. **Results**: final Scores, winner(s), and **Session Totals** across all Games in this Room. Host can start a **Rematch**.
 
@@ -173,6 +173,11 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   Bull-head tier (1 / 2 / 3 / 5 / 7). Tier is also readable from the icon count, so colour is never the only cue.
 - **Reveal**: Picks flip together, then Cards are Placed one by one in ascending order (~600 ms each), Takes
   animated into the Penalty Pile. A "skip" control jumps to the end state.
+  - Each Placed Card flies from the tray to its slot in ~350 ms, the way a Taken Row flies into a Penalty
+    Pile (`apps/web/src/PlaceFlight.tsx`): a copy flies over the table while the real Card stays hidden
+    until it lands. A Card that Takes a Row flies to the Row's end first, then into its first slot. This
+    is a Room setting (`animateCards`, on by default) that the Host can switch in the Lobby or, unlike the
+    other settings, mid-Game from the table's top bar; with it off, Cards appear in place.
   - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
     (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
     unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in
@@ -184,6 +189,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   - `prefers-reduced-motion` (and a hidden tab) skips the frames and plays at most one sound.
 - **Emoji reactions**: a small fixed set, shown floating over the sender's Seat (or their name in the
   Lobby or the Spectator list) for 2.5 s; rate-limited.
+- A **Rules** link to the 6 nimmt! article on English Wikipedia, on the home page and in the Room header.
 - Light and dark theme following the system setting.
 - Sound effects for Reveal and Take, on by default, mute toggle remembered in `localStorage`. All sounds
   are synthesised with the Web Audio API (no audio files): a swish for the flip, a tock per Placement and
