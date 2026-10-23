@@ -46,7 +46,8 @@ Every pull request from this repository that passes CI gets a
 [Worker Preview](https://developers.cloudflare.com/workers/previews/) named `pr-<number>`, with
 its own Durable Object storage, at a public workers.dev URL that CI comments on the PR. Closing the PR
 deletes it. Preview settings live in the `previews` block of `apps/worker/wrangler.jsonc`, and
-analytics are only on at take5.mayorov.dev.
+analytics are only on at take5.mayorov.dev. The URL comes from `preview_urls: true`, a Worker-level
+setting that only takes effect on a production deploy; until then CI warns instead of commenting.
 
 Both need two repository secrets:
 

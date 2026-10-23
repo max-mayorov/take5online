@@ -86,14 +86,19 @@ jobs:
       - id: preview
         run: |
           pnpm --filter @take5/worker exec wrangler preview --name "pr-$PR" --message "$SHA"
-          echo "url=$(jq -er 'select(.type == "preview") | .preview_urls[0]' "$WRANGLER_OUTPUT_FILE_PATH")" >> "$GITHUB_OUTPUT"
+          url="$(jq -r 'select(.type == "preview") | .preview_urls[0] // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
+          if [ -z "$url" ]; then
+            echo "::warning::Preview pr-$PR has no URL. \`preview_urls\` in apps/worker/wrangler.jsonc only applies after a production deploy."
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - run: |
+      - if: steps.preview.outputs.url != ''
+        run: |
           gh pr comment "$PR" --edit-last --create-if-none --body "Preview of $SHA: $URL"
         env:
           PR: ${{ github.event.pull_request.number }}

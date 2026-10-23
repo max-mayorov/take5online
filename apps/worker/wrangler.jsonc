@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "take5.mayorov.dev", "custom_domain": true }],
+  // Gives PR previews a workers.dev URL. A Worker-level setting, so it only applies once deployed.
+  "preview_urls": true,
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
