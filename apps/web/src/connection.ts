@@ -8,6 +8,7 @@ import {
   type RoomView,
 } from '@take5/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { clearRoomContext, setRoomContext, track } from './analytics';
 import type { Update } from './useReveal';
 
 export type Status =
@@ -92,6 +93,11 @@ export function useRoom(code: string) {
     let ping: ReturnType<typeof setInterval> | undefined;
     let seq = 0;
     let reactionId = 0;
+    // For analytics: the last Phase seen, who we are, and whether the connection dropped.
+    let phase: RoomView['phase'] | null = null;
+    let memberId: string | null = null;
+    let dropped = false;
+    let reportedCantConnect = false;
     const reactionTimers = new Set<ReturnType<typeof setTimeout>>();
 
     const hello = (ws: WebSocket) => {
@@ -119,6 +125,9 @@ export function useRoom(code: string) {
 
       ws.onopen = () => {
         opened = true;
+        if (dropped) track('ws_reconnected', { attempts: attempt });
+        dropped = false;
+        reportedCantConnect = false;
         attempt = 0;
         failedOpens = 0;
         setState((s) => (s.cantConnect ? { ...s, cantConnect: false } : s));
@@ -140,10 +149,12 @@ export function useRoom(code: string) {
         switch (message.type) {
           case 'welcome':
             writeToken(code, message.token);
+            track('room_joined', { new_member: pendingNickname.current !== null });
             pendingNickname.current = null;
             setState((s) => ({ ...s, status: 'joined', reconnecting: false }));
             break;
           case 'state': {
+            noteState(message.room);
             const update = { seq: ++seq, events: message.events };
             setState((s) => ({
               ...s,
@@ -165,10 +176,12 @@ export function useRoom(code: string) {
             break;
           }
           case 'reload':
+            track('reload_required');
             finished.current = true;
             setState((s) => ({ ...s, status: 'reload' }));
             break;
           case 'error':
+            track('server_error', { code: message.code });
             if (message.code === 'room_not_found') {
               finished.current = true;
               writeToken(code, null);
@@ -187,18 +200,38 @@ export function useRoom(code: string) {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         clearInterval(ping);
         if (finished.current) return;
         if (!opened) failedOpens++;
         const cantConnect = failedOpens >= CANT_CONNECT_AFTER;
+        if (opened) track('ws_closed', { code: event.code, reason: event.reason });
+        if (cantConnect && !reportedCantConnect)
+          track('cant_connect', { failed_opens: failedOpens });
+        dropped = true;
+        reportedCantConnect ||= cantConnect;
         setState((s) => ({ ...s, reconnecting: true, cantConnect }));
         retry = setTimeout(connect, Math.min(10_000, 500 * 2 ** attempt++));
       };
     };
 
+    const noteState = (room: RoomView) => {
+      if (room.you !== memberId) {
+        memberId = room.you;
+        setRoomContext({ roomCode: code, memberId });
+      }
+      if (phase !== null && room.phase !== phase) {
+        const props = { players: room.seats.length, is_host: room.hostId === room.you };
+        if (room.phase === 'game') track('game_started', props);
+        if (room.phase === 'results') track('game_ended', props);
+      }
+      phase = room.phase;
+    };
+
+    setRoomContext({ roomCode: code });
     connect();
     return () => {
+      clearRoomContext();
       finished.current = true;
       clearTimeout(retry);
       clearInterval(ping);
@@ -216,6 +249,7 @@ export function useRoom(code: string) {
   );
 
   const leave = useCallback(() => {
+    track('room_left');
     send({ type: 'leave' });
     finished.current = true;
     writeToken(code, null);

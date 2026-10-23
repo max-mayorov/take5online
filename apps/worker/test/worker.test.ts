@@ -1,6 +1,6 @@
 import { exports, env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BOT_DELAY_MAX_MS, GRACE_PERIOD_MS, pickDeadline, type RoomData } from '../src/room';
 import type { RoomObject } from '../src/room-object';
 import { REACTION_LIMIT, type ClientIntent } from '@take5/protocol';
@@ -39,6 +39,40 @@ describe('HTTP API', () => {
 
   it('404s unknown API routes', async () => {
     expect((await exports.default.fetch('http://test/api/nope')).status).toBe(404);
+  });
+});
+
+describe('PostHog proxy', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const upstream = () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('ok'));
+    return () => {
+      const [input, init] = spy.mock.calls[0]!;
+      return { url: String(input), init: init! };
+    };
+  };
+
+  it('forwards events to the EU API without cookies, keeping the visitor IP', async () => {
+    const sent = upstream();
+    const response = await exports.default.fetch('http://test/relay/e/?ver=1', {
+      method: 'POST',
+      headers: { cookie: 'a=b', 'CF-Connecting-IP': '203.0.113.9' },
+      body: '{"event":"x"}',
+    });
+    expect(await response.text()).toBe('ok');
+    const { url, init } = sent();
+    expect(url).toBe('https://eu.i.posthog.com/e/?ver=1');
+    const headers = new Headers(init.headers);
+    expect(headers.get('cookie')).toBeNull();
+    expect(headers.get('X-Forwarded-For')).toBe('203.0.113.9');
+    expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe('{"event":"x"}');
+  });
+
+  it('serves SDK scripts from the EU asset host', async () => {
+    const sent = upstream();
+    await exports.default.fetch('http://test/relay/static/recorder.js?v=1');
+    expect(sent().url).toBe('https://eu-assets.i.posthog.com/static/recorder.js?v=1');
   });
 });
 

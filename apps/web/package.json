@@ -12,6 +12,7 @@
   "dependencies": {
     "@take5/engine": "workspace:*",
     "@take5/protocol": "workspace:*",
+    "posthog-js": "1.438.7",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

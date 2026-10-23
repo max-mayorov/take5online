@@ -1,9 +1,16 @@
 import { parseRoomCode, type CreateRoomResponse } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
+import { track } from './analytics';
 import { CardFace } from './Card';
-import { t } from './strings';
+import { t, tPrivacy } from './strings';
 
-export function Home({ onEnter }: { onEnter: (code: string) => void }) {
+export function Home({
+  onEnter,
+  onPrivacy,
+}: {
+  onEnter: (code: string) => void;
+  onPrivacy: () => void;
+}) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -14,8 +21,11 @@ export function Home({ onEnter }: { onEnter: (code: string) => void }) {
     try {
       const response = await fetch('/api/rooms', { method: 'POST' });
       if (!response.ok) throw new Error(String(response.status));
-      onEnter(((await response.json()) as CreateRoomResponse).code);
-    } catch {
+      const { code } = (await response.json()) as CreateRoomResponse;
+      track('room_created', { room_code: code });
+      onEnter(code);
+    } catch (error) {
+      track('room_create_failed', { error: String(error) });
       setError(t.createFailed);
       setCreating(false);
     }
@@ -59,6 +69,16 @@ export function Home({ onEnter }: { onEnter: (code: string) => void }) {
           {error}
         </p>
       )}
+      <a
+        className="footer-link"
+        href="/privacy"
+        onClick={(e) => {
+          e.preventDefault();
+          onPrivacy();
+        }}
+      >
+        {tPrivacy.link}
+      </a>
     </main>
   );
 }
