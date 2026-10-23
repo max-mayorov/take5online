@@ -211,6 +211,27 @@ test('a Reveal starts from the old Board, without flashing the new one first', a
   }
 });
 
+test('the Hand stays locked from the flip until every Card is Placed', async ({ browser }) => {
+  const page = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+  await page.getByRole('button', { name: /Add a bot/ }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await page.getByRole('button', { name: 'Start game' }).click();
+
+  const unlocked = page.locator('.hand .card-button:not(:disabled)');
+  for (let turn = 0; turn < 3; turn++) {
+    await expect(page.locator('.picked-mark')).toHaveCount(1, { timeout: 10_000 });
+    // The highest Card is never the Low Card, so the Reveal places Cards without a Row choice.
+    await page.locator('.hand .card-button').last().click();
+    await expect(page.getByText('Revealing…')).toBeVisible();
+    await expect(unlocked).toHaveCount(0);
+    await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
+    await expect(unlocked).toHaveCount(10 - turn - 1);
+  }
+});
+
 test('reactions float over the sender for everyone', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
   await max.getByRole('button', { name: 'React', exact: true }).click();
