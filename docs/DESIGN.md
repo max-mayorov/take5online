@@ -172,11 +172,11 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 - **Cards**: original SVG with a big number, a matching count of original bull icons, and colour by
   Bull-head tier (1 / 2 / 3 / 5 / 7). Tier is also readable from the icon count, so colour is never the only cue.
 - **Reveal**: Picks flip together, then Cards are Placed one by one in ascending order (~600 ms each), Takes
-  animated into the Penalty Pile. A "skip" control jumps to the end state.
+  animated into the Penalty Pile.
   - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
     (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
     unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in
-    order; snapshots that arrive meanwhile queue their own frames. Once they have played, or on skip, the
+    order; snapshots that arrive meanwhile queue their own frames. Once they have played, the
     table shows the live snapshot again. The Hand is always live, so Players can Pick for the next Turn
     while a Reveal is still showing; Row choices wait for the animation to finish.
   - A Low Card pause is the live snapshot itself: the waiting Cards stay in the tray, the Low Card and the

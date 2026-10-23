@@ -80,7 +80,7 @@ test('the host can kick, and a newcomer can take over the bot that took the seat
   await expect(kim.locator('.hand .card-button')).not.toHaveCount(0);
 });
 
-test('a Reveal animates and can be skipped', async ({ browser }) => {
+test('a Reveal animates and finishes by itself', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
   await max.getByRole('button', { name: 'Start game' }).click();
 
@@ -88,19 +88,14 @@ test('a Reveal animates and can be skipped', async ({ browser }) => {
   await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
   await pickFirst(sam);
 
-  // Both Picks appear in the tray, then get Placed one by one; skipping jumps to the end.
+  // Both Picks appear in the tray, then get Placed one by one until the animation ends.
   await Promise.all(
     [max, sam].map(async (page) => {
       await expect(page.getByText('Revealing…')).toBeVisible();
       await expect(page.locator('.tray .card')).not.toHaveCount(0);
+      await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
     }),
   );
-  await max.getByRole('button', { name: /Skip/ }).click();
-  await expect(max.getByRole('button', { name: /Skip/ })).toHaveCount(0);
-  await expect(max.getByText('Revealing…')).toHaveCount(0);
-
-  // Without skipping, the animation finishes by itself.
-  await expect(sam.getByRole('button', { name: /Skip/ })).toHaveCount(0, { timeout: 10_000 });
 
   // Every Pick is now on the Board, or still in the tray if a Low Card is waiting for a Row.
   for (const page of [max, sam]) {

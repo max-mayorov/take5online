@@ -604,11 +604,6 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.skip {
-  padding: 0.35rem 0.8rem;
-  font-weight: 600;
-}
-
 .table-seats {
   grid-area: seats;
 }

@@ -1,5 +1,5 @@
 import type { GameEvent, GameView } from '@take5/engine';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { revealFrames, summarySounds, type Frame } from './reveal';
 import { playSound } from './sound';
 
@@ -19,7 +19,7 @@ function reducedMotion(): boolean {
 
 /**
  * Plays each Update's Reveal as a sequence of table frames. Returns the frame to show, or null
- * when the table should show the live snapshot, and a way to skip to it.
+ * when the table should show the live snapshot.
  */
 export function useReveal(update: Update | null) {
   const [queue, setQueue] = useState<Frame[]>([]);
@@ -46,6 +46,5 @@ export function useReveal(update: Update | null) {
     return () => clearTimeout(timer);
   }, [frame]);
 
-  const skip = useCallback(() => setQueue([]), []);
-  return { frame, skip };
+  return frame;
 }

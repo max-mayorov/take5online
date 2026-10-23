@@ -59,7 +59,6 @@ export const t = {
   thinking: 'picking…',
   choosing: 'choosing',
   revealing: 'Revealing…',
-  skip: 'Skip',
   roundOver: (round: number) => `Round ${round} is over`,
   revealedPicks: 'Revealed cards',
   mute: 'Mute sounds',

@@ -16,13 +16,12 @@ interface Props {
   game: GameView;
   /** The Reveal step being shown, or null for the live snapshot. */
   frame: Frame | null;
-  onSkip: () => void;
   reactions: ReactionShown[];
   send: (intent: ClientIntent) => void;
   onLeave: () => void;
 }
 
-export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave }: Props) {
+export function GameTable({ view, game, frame, reactions, send, onLeave }: Props) {
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
   const table = frame?.table ?? tableFrom(game);
   const animating = frame !== null;
@@ -42,11 +41,6 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
     <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
       <div className="table-top">
         <span className="muted">{t.round(game.round, game.turn)}</span>
-        {animating && (
-          <button className="skip" onClick={onSkip}>
-            {t.skip} ⏭
-          </button>
-        )}
       </div>
 
       <div className="table-seats">
