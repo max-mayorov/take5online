@@ -10,6 +10,10 @@ export const t = {
   createFailed: 'Could not create a room. Try again in a minute.',
 
   room: (code: string) => `Room ${code}`,
+  roomCode: 'Room code',
+  shareHint: 'Share the link or the code with your friends.',
+  homeHow: 'Create a room, send your friends the link, and play on your phones at the table.',
+  or: 'or',
   copyLink: 'Copy link',
   copied: 'Copied!',
   connecting: 'Connecting…',
@@ -40,8 +44,27 @@ export const t = {
 
   round: (round: number, turn: number) => `Round ${round} · Turn ${turn}/10`,
   rowLabel: (row: number) => `Row ${row + 1}`,
+  takeRowLabel: (row: number, bullHeads: number) => `Take row ${row + 1} (${bullHeads} Bull-heads)`,
   bullHeads: (n: number) => `${n}🐮`,
+  cardLabel: (card: number, bullHeads: number) =>
+    `${card}, ${bullHeads} Bull-head${bullHeads === 1 ? '' : 's'}`,
+  hiddenCard: 'Hidden card',
   yourHand: 'Your hand',
+  seats: 'Players',
+  scoreLabel: (name: string, score: number, pile: number) =>
+    `${name}: score ${score}, ${pile} card${pile === 1 ? '' : 's'} taken this round`,
+  hasPicked: 'picked',
+  thinking: 'picking…',
+  choosing: 'choosing',
+  revealing: 'Revealing…',
+  skip: 'Skip',
+  roundOver: (round: number) => `Round ${round} is over`,
+  revealedPicks: 'Revealed cards',
+  mute: 'Mute sounds',
+  unmute: 'Turn sounds on',
+  react: 'React',
+  reactWith: (emoji: string) => `React with ${emoji}`,
+  reacted: (name: string, emoji: string) => `${name} reacted ${emoji}`,
   pickPrompt: 'Pick a card. You can change it until everyone has picked.',
   picked: 'Picked — waiting for the others. Tap another card to change.',
   chooseRowPrompt: (card: number) => `Your ${card} is lower than every row. Tap a row to take.`,
@@ -50,6 +73,7 @@ export const t = {
   pickedMark: '✓',
 
   results: 'Game over',
+  scoreHeader: { place: '#', name: 'Player', score: 'Score' },
   winners: (names: string[]) =>
     names.length === 1 ? `${names[0]} wins!` : `${names.join(' & ')} share the win!`,
   finalScores: 'Final scores',
