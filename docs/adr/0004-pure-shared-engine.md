@@ -1,0 +1,3 @@
+# Pure rules engine shared by server and client in a TypeScript monorepo
+
+All game rules live in `packages/engine` as a pure function `(state, action) → { state, events }`, with a seeded RNG and no Cloudflare, React or I/O imports. The Room Durable Object runs it with authority; the React client imports the same code to show which moves are valid and to animate events. The Bot lives here too. Keeping the rules pure makes them testable by plain unit and property tests and lets any Game be replayed exactly from its seed. Sharing the code is why the repo is a single TypeScript monorepo (`packages/engine`, `packages/protocol`, `apps/worker`, `apps/web`) and not separate client and server repos.

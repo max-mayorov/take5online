@@ -1,0 +1,3 @@
+# A Bot acts for absent or slow Players instead of pausing or forfeiting
+
+When a Player's Pick Timer runs out, or an Away Player's Grace Period ends with the timer off, a greedy Bot makes the Pick or Low Card Row choice for that Seat. The Seat stays theirs, and they take it back the moment they reconnect. The alternatives were worse for a group of friends: pausing stalls everyone because of one sleeping phone, and kicking or forfeiting punishes a dropped connection. The Bot is greedy, not random, so a short absence doesn't hand the absent Player a pile of Bull-heads. The same Bot can also fill empty Seats deliberately.
