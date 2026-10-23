@@ -62,8 +62,8 @@ behind the bigger decisions lives in [adr/](./adr/).
   attributes, which show Nicknames). They go through the Worker at `/relay/*` so ad
   blockers don't drop them. Nothing is stored in the browser for analytics, so there is no consent
   banner; the only browser storage is the seat token, the mute choice and an analytics opt-out, all
-  strictly necessary. Off on `localhost`, with Global Privacy Control or Do Not Track, or after opting out
-  on the privacy page. See [ADR-0009](./adr/0009-posthog-analytics.md).
+  strictly necessary. Off anywhere but take5.mayorov.dev (dev servers, PR previews), with Global
+  Privacy Control or Do Not Track, or after opting out on the privacy page. See [ADR-0009](./adr/0009-posthog-analytics.md).
 - **Privacy notice** at `/privacy` (GDPR Art. 13), linked from the home page and the Nickname form. It
   names the controller, what each part of the site keeps and for how long, and holds the analytics
   opt-out switch. Update it whenever what the site collects changes.

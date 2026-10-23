@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { analyticsOn, browserObjects, localServer, setAnalyticsOn } from './analytics';
+import { analyticsOn, browserObjects, liveSite, setAnalyticsOn } from './analytics';
 import { t, tPrivacy } from './strings';
 
 export function Privacy({ onHome }: { onHome: () => void }) {
@@ -42,7 +42,7 @@ function Email() {
 
 function StatsSwitch() {
   const [on, setOn] = useState(analyticsOn);
-  if (localServer) return <p className="muted">{tPrivacy.statsLocalOff}</p>;
+  if (!liveSite) return <p className="muted">{tPrivacy.statsNotLiveOff}</p>;
   if (browserObjects()) return <p className="muted">{tPrivacy.statsBrowserOff}</p>;
   return (
     <label className="row">

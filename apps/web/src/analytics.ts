@@ -7,9 +7,9 @@ const POSTHOG_PATH = '/relay';
 /** Set when someone turns analytics off on the privacy page; storing their objection is strictly necessary. */
 const OPT_OUT_KEY = 'take5:no-analytics';
 
-/** Local servers (dev and e2e) send nothing, so tests don't pollute the data. */
-export const localServer = ['localhost', '127.0.0.1'].includes(location.hostname);
-const enabled = !localServer;
+/** Only the live site sends events; local servers (dev, e2e) and PR previews don't pollute the data. */
+export const liveSite = location.hostname === 'take5.mayorov.dev';
+const enabled = liveSite;
 
 let posthog: Promise<PostHog> | null = null;
 /** This page's choice, which also covers browsers that refuse storage. */
