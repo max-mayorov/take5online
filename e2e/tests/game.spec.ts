@@ -146,16 +146,24 @@ test('the host can switch card animation for the whole room, even mid-game', asy
     }),
   );
 
+  // Even the highest Card can be a Low Card; then its Player Takes a Row before the next Turn.
+  await chooseRowIfAsked([max, sam]);
+  await expect(max.locator('.hand .card-button:not(:disabled)').first()).toBeVisible();
+
   // Only the Host can switch it back on mid-Game, and the next Turn's Cards fly for everyone.
   await expect(sam.getByLabel('Animate cards', { exact: true })).toHaveCount(0);
   const midGame = max.getByLabel('Animate cards', { exact: true });
   await expect(midGame).not.toBeChecked();
   await midGame.click();
   await expect(midGame).toBeChecked();
+  await Promise.all([max, sam].map(watchFlights));
   await pickFirst(max, 'last');
   await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
   await pickFirst(sam, 'last');
-  await expect(sam.locator('.flight .flyer')).toBeAttached();
+  await expect(async () => {
+    await chooseRowIfAsked([max, sam]);
+    expect(await sam.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(true);
+  }).toPass({ timeout: 15_000 });
 });
 
 test('the rules are a click away on Wikipedia, here and in every room', async ({ page }) => {
@@ -324,6 +332,14 @@ async function pickFirst(page: Page, end: 'first' | 'last' = 'first') {
     const moved = (await turnLabel.allTextContents()).join() !== turn;
     expect(moved || (await unpicked.count()) === 0).toBe(true);
   }).toPass({ timeout: 5000 });
+}
+
+/** Takes the first Row for whichever Player must choose one for a Low Card, if anyone must. */
+async function chooseRowIfAsked(pages: Page[]) {
+  for (const page of pages) {
+    const row = page.locator('.board-row.choosable').first();
+    if (await row.isVisible()) await row.click();
+  }
 }
 
 async function act(page: Page) {
