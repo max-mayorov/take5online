@@ -60,19 +60,19 @@ behind the bigger decisions lives in [adr/](./adr/).
 
 ### Repository layout (TypeScript monorepo, pnpm workspaces)
 
-| Path                | Contents                                                                    |
-| ------------------- | --------------------------------------------------------------------------- |
+| Path                | Contents                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `packages/engine`   | Pure rules engine: `(state, action) → { state, events }`, seeded RNG, Bot. No Cloudflare or React imports. |
-| `packages/protocol` | Zod schemas for every client↔server message, the protocol version, shared types. |
-| `apps/worker`       | Worker entry + Room Durable Object, `wrangler.jsonc`.                        |
-| `apps/web`          | React + Vite SPA.                                                            |
-| `e2e`               | Playwright tests.                                                            |
+| `packages/protocol` | Zod schemas for every client↔server message, the protocol version, shared types.                           |
+| `apps/worker`       | Worker entry + Room Durable Object, `wrangler.jsonc`.                                                      |
+| `apps/web`          | React + Vite SPA.                                                                                          |
+| `e2e`               | Playwright tests.                                                                                          |
 
 See [ADR-0004](./adr/0004-pure-shared-engine.md).
 
 ## Server authority and protocol
 
-- The server shuffles, deals, validates and resolves everything. Clients only send *intents*
+- The server shuffles, deals, validates and resolves everything. Clients only send _intents_
   (`pick {card}`, `chooseRow {row}`, `react {emoji}`, Host commands). See
   [ADR-0005](./adr/0005-authoritative-redacted-snapshots.md).
 - After every change the server sends each connection a **full snapshot redacted to what that
@@ -152,10 +152,10 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 
 ## Milestones
 
-| #  | Deliverable                                                                 |
-| -- | --------------------------------------------------------------------------- |
-| M1 | Rules engine + full test suite.                                             |
-| M2 | Room Durable Object + bare-bones UI, playable end-to-end; **deployed to take5.mayorov.dev** so friends can try it. |
-| M3 | Real UI: SVG Cards, Reveal animation, sound, phone layout, themes.          |
-| M4 | Bots, Away handling, Pick Timer, Grace Period, Host kick/replace.           |
-| M5 | CI polish: full E2E suite gating deploys.                                   |
+| #   | Deliverable                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------ |
+| M1  | Rules engine + full test suite.                                                                                    |
+| M2  | Room Durable Object + bare-bones UI, playable end-to-end; **deployed to take5.mayorov.dev** so friends can try it. |
+| M3  | Real UI: SVG Cards, Reveal animation, sound, phone layout, themes.                                                 |
+| M4  | Bots, Away handling, Pick Timer, Grace Period, Host kick/replace.                                                  |
+| M5  | CI polish: full E2E suite gating deploys.                                                                          |
