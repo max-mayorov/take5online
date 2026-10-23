@@ -25,6 +25,7 @@ interface Props {
 export function GameTable({ view, game, frame, reactions, send, onLeave }: Props) {
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
   const table = frame?.table ?? tableFrom(game);
+  // A Reveal is playing: from the flip until every Card is Placed, no new Pick.
   const animating = frame !== null;
   // While the Reveal that ends a Round plays, the next Round's Hand waits.
   const nextDealt = table.round !== game.round;
@@ -100,7 +101,7 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
         <Hand
           hand={nextDealt ? table.hand : game.hand}
           pick={nextDealt ? null : game.pick}
-          enabled={!nextDealt && game.phase === 'picking'}
+          enabled={!animating && game.phase === 'picking'}
           onPick={(card) => send({ type: 'pick', card })}
         />
       )}
