@@ -1,5 +1,6 @@
 import { parseRoomCode, type CreateRoomResponse } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
+import { track } from './analytics';
 import { CardFace } from './Card';
 import { t } from './strings';
 
@@ -14,8 +15,11 @@ export function Home({ onEnter }: { onEnter: (code: string) => void }) {
     try {
       const response = await fetch('/api/rooms', { method: 'POST' });
       if (!response.ok) throw new Error(String(response.status));
-      onEnter(((await response.json()) as CreateRoomResponse).code);
-    } catch {
+      const { code } = (await response.json()) as CreateRoomResponse;
+      track('room_created', { room_code: code });
+      onEnter(code);
+    } catch (error) {
+      track('room_create_failed', { error: String(error) });
       setError(t.createFailed);
       setCreating(false);
     }

@@ -10,9 +10,16 @@ export { RoomObject } from './room-object';
 
 const CREATE_ATTEMPTS = 10;
 
+/** Analytics go through our own domain so ad blockers don't drop them; must match the web app. */
+const POSTHOG_PATH = '/relay';
+const POSTHOG_API_HOST = 'eu.i.posthog.com';
+const POSTHOG_ASSET_HOST = 'eu-assets.i.posthog.com';
+
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, ctx): Promise<Response> {
     const { pathname } = new URL(request.url);
+
+    if (pathname.startsWith(`${POSTHOG_PATH}/`)) return proxyPostHog(request, ctx);
 
     if (pathname === '/api/rooms') {
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -53,6 +60,32 @@ async function createRoom(request: Request, env: Env): Promise<Response> {
     }
   }
   return json({ error: 'no_free_code' }, 503);
+}
+
+/** Forwards to PostHog: SDK scripts and remote config from the (cached) asset host, events to the API. */
+async function proxyPostHog(request: Request, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  const path = url.pathname.slice(POSTHOG_PATH.length) + url.search;
+
+  if (path.startsWith('/static/') || path.startsWith('/array/')) {
+    const cached = await caches.default.match(request);
+    if (cached) return cached;
+    const response = await fetch(`https://${POSTHOG_ASSET_HOST}${path}`);
+    if (response.ok) ctx.waitUntil(caches.default.put(request, response.clone()));
+    return response;
+  }
+
+  const headers = new Headers(request.headers);
+  headers.delete('cookie');
+  headers.delete('authorization');
+  // So PostHog places visitors where they are, not at Cloudflare's data center.
+  headers.set('X-Forwarded-For', request.headers.get('CF-Connecting-IP') ?? '');
+  const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
+  return fetch(`https://${POSTHOG_API_HOST}${path}`, {
+    method: request.method,
+    headers,
+    body: hasBody ? await request.arrayBuffer() : null,
+  });
 }
 
 function randomRoomCode(): string {
