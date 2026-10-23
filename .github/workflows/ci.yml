@@ -13,9 +13,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -24,7 +24,17 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
-      - run: pnpm --filter @take5/e2e exec playwright install --with-deps chromium
+      # The runner image already has Chromium's system libraries, so skip `--with-deps`
+      # (its apt step sometimes takes 10+ minutes) and cache the headless shell per version.
+      - id: playwright
+        run: echo "version=$(pnpm --filter @take5/e2e exec playwright --version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @take5/e2e exec playwright install --only-shell chromium
       - run: pnpm e2e
 
   deploy:
@@ -36,9 +46,9 @@ jobs:
       group: deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
           cache: pnpm
