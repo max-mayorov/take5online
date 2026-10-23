@@ -28,8 +28,8 @@ export const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 /** How long an Away Player is waited for before the Bot acts for them. */
 export const GRACE_PERIOD_MS = 60 * 1000;
 /** A Bot Seat "thinks" for this long before each move, so its moves don't land all at once. */
-export const BOT_DELAY_MIN_MS = 1000;
-export const BOT_DELAY_MAX_MS = 2000;
+export const BOT_DELAY_MIN_MS = 2000;
+export const BOT_DELAY_MAX_MS = 6000;
 
 export interface Member {
   id: string;
@@ -373,7 +373,7 @@ export function botDueAt(room: RoomData, seat: number): number {
 }
 
 /**
- * A Bot Seat's thinking time for one decision: 1–2 s, varying by Seat and decision but
+ * A Bot Seat's thinking time for one decision: 2–6 s, varying by Seat and decision but
  * derived from the Game's seed, so a Game replays the same way.
  */
 export function botDelay(seed: number, key: string, seat: number): number {

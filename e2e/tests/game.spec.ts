@@ -45,7 +45,7 @@ test('one person plays a whole game against a bot', async ({ browser }) => {
   await expect(page.getByRole('timer')).toHaveAccessibleName(/\d+ seconds left to pick/);
   await expect(page.locator('.seat.bot')).toContainText('Bot 1');
 
-  // The Bot thinks for a second or two each Turn, so wait until it is Max's move each time.
+  // The Bot thinks for a few seconds each Turn, so wait until it is Max's move each time.
   const maxToMove = page
     .locator('.prompt', { hasText: /^Pick a card|Tap a row/ })
     .or(page.getByText('Game over'));
