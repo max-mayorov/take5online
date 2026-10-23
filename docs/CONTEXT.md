@@ -23,7 +23,7 @@ A person occupying a Seat.
 _Avoid_: User, account, member
 
 **Bot**:
-The computer occupant of a Seat, either seated deliberately or taking over for an Away Player.
+The computer occupant of a Seat, seated deliberately or given the Seat of a Player who left; it also acts for an Away or slow Player.
 _Avoid_: AI, CPU, computer player
 
 **Spectator**:
