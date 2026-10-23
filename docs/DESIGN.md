@@ -142,7 +142,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   phase, along with its Hand and Score; the Bot then leaves the Room. Session Totals key a Bot's
   row by its name, so "Bot 1" keeps one row across Games.
 - **Who the Bot acts for, and when** (`tick` in `apps/worker/src/room.ts`, run after every change
-  and on every alarm): a Bot Seat after a short "thinking" delay of 1–2 s per move; any Seat still
+  and on every alarm): a Bot Seat after a short "thinking" delay of 2–6 s per move; any Seat still
   waiting when the Pick Timer runs out; and an Away Player's Seat once they have been Away for the
   Grace Period (then on every decision until they return), whichever of those last two comes
   first. Moves made on a timeout or after the Grace Period are instant. The thinking delay varies by
