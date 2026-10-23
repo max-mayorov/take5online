@@ -179,7 +179,7 @@ test('a Reveal starts from the old Board, without flashing the new one first', a
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
 
-  // Note the Board's Cards and the tray's size at every DOM change.
+  // Note the Board's Cards and the tray's Revealed Cards at every DOM change.
   await page.evaluate(() => {
     const board = () =>
       [...document.querySelectorAll('.board-row .slot:not(.row-end) .card')]
@@ -188,7 +188,9 @@ test('a Reveal starts from the old Board, without flashing the new one first', a
     const seen: { board: string; tray: number }[] = [];
     Object.assign(window, { board, seen });
     new MutationObserver(() => {
-      seen.push({ board: board(), tray: document.querySelectorAll('.tray li').length });
+      // The viewer's own Pick shows face up while it waits; the others only once Revealed.
+      const revealed = document.querySelectorAll('.tray li:not(.mine) [data-card]').length;
+      seen.push({ board: board(), tray: revealed });
     }).observe(document.body, { childList: true, subtree: true });
   });
   type Recorder = { board: () => string; seen: { board: string; tray: number }[] };
@@ -312,12 +314,12 @@ async function enter(page: Page, nickname: string) {
 async function pickFirst(page: Page, end: 'first' | 'last' = 'first') {
   const turnLabel = page.getByText(/^Round \d+ · Turn/);
   const turn = (await turnLabel.allTextContents()).join();
-  const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)')[end]();
+  const button = page.locator('.hand .card-button:not(:disabled)')[end]();
   const card = await button.getAttribute('data-card');
   await button.click();
-  // A Picked Card is either raised in the Hand or, once the Turn is Revealed, gone from it,
-  // unless a new Round dealt the same Card again; then the Turn label has moved on.
-  const unpicked = page.locator(`.hand .card-button[aria-pressed="false"][data-card="${card}"]`);
+  // A Picked Card leaves the Hand for the tray, unless a new Round dealt the same Card again;
+  // then the Turn label has moved on.
+  const unpicked = page.locator(`.hand .card-button[data-card="${card}"]`);
   await expect(async () => {
     const moved = (await turnLabel.allTextContents()).join() !== turn;
     expect(moved || (await unpicked.count()) === 0).toBe(true);

@@ -32,20 +32,37 @@ describe('revealFrames', () => {
     expect(summarySounds(events)).toEqual([]);
   });
 
-  it('flips the Picks together, then Places them one by one in ascending order', () => {
+  it('flips the Picks together in Seat order, sorts them, then Places them in ascending order', () => {
     for (const { before, events } of steps(7, 4)) {
-      if (!events.some((e) => e.type === 'revealed')) continue;
+      const revealed = events.find((e) => e.type === 'revealed');
+      if (revealed?.type !== 'revealed') continue;
       const frames = revealFrames(viewFor(before, null), events);
-      expect(frames[0]!.table.faceDown).toBe(true);
-      expect(frames[1]).toMatchObject({ sound: 'flip', table: { faceDown: false } });
-      expect(frames[1]!.table.tray.map((p) => p.card)).toEqual(
-        [...frames[1]!.table.tray.map((p) => p.card)].sort((a, b) => a - b),
-      );
+      const [faceDown, flipped, sorted] = frames.map((f) => f.table.tray);
+      expect(faceDown).toEqual([0, 1, 2, 3].map((seat) => ({ seat, card: null })));
+      expect(frames[1]!.sound).toBe('flip');
+      expect(flipped!.map((p) => p.seat)).toEqual([0, 1, 2, 3]);
+      const ascending = [...revealed.cards].sort((a, b) => a.card - b.card);
+      expect(sorted).toEqual(ascending);
       const placed = frames.flatMap((f) => (f.table.placed ? [f.table.placed.card] : []));
       expect(placed).toEqual([...placed].sort((a, b) => a - b));
       return;
     }
     throw new Error('no Reveal found');
+  });
+
+  it("keeps the viewer's own Pick face up in the tray, and everyone else's face down", () => {
+    for (const { after } of steps(5, 3)) {
+      // Seat 0 Picks first, so this is a Turn where both have Picked and Seat 2 has not yet.
+      if (after.phase !== 'picking' || after.picks[1] === null) continue;
+      const table = tableFrom(viewFor(after, 1));
+      expect(table.tray).toEqual([
+        { seat: 0, card: null },
+        { seat: 1, card: after.picks[1] },
+      ]);
+      expect(table.hand).not.toContain(after.picks[1]);
+      return;
+    }
+    throw new Error('no Pick found');
   });
 
   it('shows a Take in two steps: the Row about to go, then its Cards flying to the pile', () => {

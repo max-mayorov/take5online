@@ -11,8 +11,17 @@ function cardRects(): Map<Card, DOMRect> {
   const rects = new Map<Card, DOMRect>();
   document
     .querySelectorAll<HTMLElement>('.tray [data-card], .board .row-end [data-card]')
-    .forEach((el) => rects.set(Number(el.dataset.card), el.getBoundingClientRect()));
+    .forEach((el) => rects.set(Number(el.dataset.card), restingRect(el)));
   return rects;
+}
+
+/** Where `el` is shown once a tray Card still sliding to its new place has got there. */
+function restingRect(el: HTMLElement): DOMRect {
+  const rect = el.getBoundingClientRect();
+  const slot = el.closest<HTMLElement>('.tray li');
+  if (!slot) return rect;
+  const { e, f } = new DOMMatrix(getComputedStyle(slot).transform);
+  return new DOMRect(rect.x - e, rect.y - f, rect.width, rect.height);
 }
 
 /**

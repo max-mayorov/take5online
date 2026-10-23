@@ -60,7 +60,7 @@ export const t = {
   choosing: 'choosing',
   revealing: 'Revealing…',
   roundOver: (round: number) => `Round ${round} is over`,
-  revealedPicks: 'Revealed cards',
+  picks: 'Picked cards',
   rules: 'Rules',
   rulesUrl: 'https://en.wikipedia.org/wiki/6_nimmt!',
   rulesLabel: 'Rules of 6 nimmt! on Wikipedia (opens in a new tab)',

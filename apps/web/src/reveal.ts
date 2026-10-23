@@ -1,6 +1,12 @@
-import type { Card, GameEvent, GameView, PlayedCard } from '@take5/engine';
+import type { Card, GameEvent, GameView } from '@take5/engine';
 
 export type Sound = 'flip' | 'place' | 'take';
+
+/** A Seat's Pick in the tray; its Card is null while it is face down to the viewer. */
+export interface TrayCard {
+  seat: number;
+  card: Card | null;
+}
 
 /** What the table shows at one moment: either the live snapshot or a step of a Reveal. */
 export interface TableState {
@@ -12,10 +18,11 @@ export interface TableState {
   scores: number[];
   /** Cards in each Seat's Penalty Pile. */
   piles: number[];
-  /** Revealed Cards still waiting for Placement, ascending. */
-  tray: PlayedCard[];
-  /** The tray's Cards are still face down, just before they flip. */
-  faceDown: boolean;
+  /**
+   * While Picking, each Seat that has Picked, in Seat order and face down but for the viewer's own.
+   * Once Revealed, the Cards still waiting for Placement, ascending.
+   */
+  tray: TrayCard[];
   /** The Card that has just been Placed. */
   placed: { row: number; card: Card } | null;
   /** A Row about to be Taken, with the Card that Takes it. */
@@ -37,6 +44,7 @@ export interface Frame {
 export const TIMING = {
   faceDown: 350,
   flip: 900,
+  sort: 500,
   place: 600,
   taking: 700,
   take: 800,
@@ -51,8 +59,12 @@ export function tableFrom(game: GameView): TableState {
     board: game.board.map((row) => [...row]),
     scores: game.seats.map((s) => s.score),
     piles: game.seats.map((s) => s.penaltyPile.length),
-    tray: game.unplaced.map((p) => ({ ...p })),
-    faceDown: false,
+    tray:
+      game.phase === 'picking'
+        ? game.seats.flatMap((s, seat) =>
+            s.picked ? [{ seat, card: seat === game.seat ? game.pick : null }] : [],
+          )
+        : game.unplaced.map((p) => ({ ...p })),
     placed: null,
     taking: null,
     flight: null,
@@ -85,18 +97,26 @@ export function revealFrames(before: GameView, events: readonly GameEvent[]): Fr
   for (let i = 0; i < events.length; i++) {
     const event = events[i]!;
     switch (event.type) {
-      case 'revealed':
+      case 'revealed': {
+        // The Picks flip where they lay face down, in Seat order, then sort for Placement.
+        const bySeat = [...event.cards].sort((a, b) => a.seat - b.seat);
+        const ascending = [...event.cards].sort((a, b) => a.card - b.card);
         // `before` may predate the viewer's own Pick, which now leaves their Hand for the tray.
         push(
           {
             hand: table.hand.filter((card) => !event.cards.some((p) => p.card === card)),
-            tray: event.cards.map((p) => ({ ...p })),
-            faceDown: true,
+            tray: bySeat.map((p) => ({
+              seat: p.seat,
+              card: p.seat === before.seat ? p.card : null,
+            })),
           },
           TIMING.faceDown,
         );
-        push({ faceDown: false }, TIMING.flip, 'flip');
+        push({ tray: bySeat.map((p) => ({ ...p })) }, TIMING.flip, 'flip');
+        if (ascending.some((p, i) => p.seat !== bySeat[i]!.seat))
+          push({ tray: ascending.map((p) => ({ ...p })) }, TIMING.sort);
         break;
+      }
       case 'rowTaken': {
         // The engine follows every Take with the Taking Card starting the Row.
         const next = events[i + 1];
