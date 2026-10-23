@@ -18,6 +18,8 @@ export const t = {
   copied: 'Copied!',
   connecting: 'Connecting…',
   reconnecting: 'Reconnecting…',
+  cantConnect: (host: string) =>
+    `Can’t reach the game server. A browser extension such as an ad blocker may be blocking it: try allowing ${host}, or use another browser.`,
   roomNotFound: 'This room does not exist or has expired.',
   backHome: 'Back to start',
   reload: 'A new version is available.',

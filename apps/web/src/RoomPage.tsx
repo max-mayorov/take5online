@@ -45,13 +45,18 @@ export function RoomPage({ code, onExit }: { code: string; onExit: () => void })
         onReact={joined ? (emoji) => room.send({ type: 'react', emoji }) : null}
         onHome={onExit}
       />
+      {room.cantConnect && (
+        <p className="error" role="alert">
+          {t.cantConnect(location.host)}
+        </p>
+      )}
       {room.error && (
         <p className="error" role="alert">
           {t.errors[room.error]}
         </p>
       )}
       {room.status === 'needNickname' && <NicknameForm onSubmit={room.join} />}
-      {room.status === 'connecting' && <p className="muted">{t.connecting}</p>}
+      {room.status === 'connecting' && !room.cantConnect && <p className="muted">{t.connecting}</p>}
       {joined && <Joined room={room} view={room.room!} />}
     </main>
   );

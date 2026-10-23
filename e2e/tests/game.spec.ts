@@ -136,6 +136,32 @@ test('a reload keeps your seat and your mute choice', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Turn sounds on' })).toBeVisible();
 });
 
+test('a blocked connection explains itself, and recovers when unblocked', async ({ page }) => {
+  // Behave like an ad blocker: while the flag is set, every WebSocket fails before opening.
+  await page.addInitScript(() => {
+    const Real = window.WebSocket;
+    const flags = window as unknown as { blockSockets: boolean };
+    flags.blockSockets = true;
+    window.WebSocket = new Proxy(Real, {
+      construct(target, args: ConstructorParameters<typeof WebSocket>) {
+        if (!flags.blockSockets) return new target(...args);
+        // A real socket to a port nothing listens on fails the same way a blocked one does.
+        return new target('ws://127.0.0.1:9/blocked');
+      },
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await expect(page).toHaveURL(/\/[A-Z]{4}$/);
+  await expect(page.getByText(/an ad blocker may be blocking it/)).toBeVisible({ timeout: 15_000 });
+
+  await page.evaluate(
+    () => ((window as unknown as { blockSockets: boolean }).blockSockets = false),
+  );
+  await expect(page.getByLabel('Pick a nickname')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/an ad blocker may be blocking it/)).toHaveCount(0);
+});
+
 test('unknown rooms say so', async ({ page }) => {
   await page.goto('/ZZZZ');
   await expect(page.getByText('This room does not exist or has expired.')).toBeVisible();

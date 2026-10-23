@@ -25,6 +25,8 @@ export interface RoomConnection {
   /** Reactions received in the last few seconds. */
   reactions: ReactionShown[];
   reconnecting: boolean;
+  /** Several connections in a row failed before opening: something (often an ad blocker) blocks them. */
+  cantConnect: boolean;
 }
 
 export interface ReactionShown {
@@ -37,6 +39,8 @@ export interface ReactionShown {
 export const REACTION_MS = 2500;
 
 const PING_MS = 25_000;
+/** Failed opens in a row before the "can't connect" hint shows (~4 s with the backoff below). */
+const CANT_CONNECT_AFTER = 3;
 const MAX_EVENTS = 40;
 
 const tokenKey = (code: string) => `take5:token:${code}`;
@@ -68,6 +72,7 @@ export function useRoom(code: string) {
     update: null,
     reactions: [],
     reconnecting: false,
+    cantConnect: false,
   });
   const socket = useRef<WebSocket | null>(null);
   const pendingNickname = useRef<string | null>(null);
@@ -82,6 +87,7 @@ export function useRoom(code: string) {
   useEffect(() => {
     finished.current = false;
     let attempt = 0;
+    let failedOpens = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let ping: ReturnType<typeof setInterval> | undefined;
     let seq = 0;
@@ -109,9 +115,13 @@ export function useRoom(code: string) {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${protocol}//${location.host}/ws/${code}`);
       socket.current = ws;
+      let opened = false;
 
       ws.onopen = () => {
+        opened = true;
         attempt = 0;
+        failedOpens = 0;
+        setState((s) => (s.cantConnect ? { ...s, cantConnect: false } : s));
         hello(ws);
         ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), PING_MS);
       };
@@ -180,7 +190,9 @@ export function useRoom(code: string) {
       ws.onclose = () => {
         clearInterval(ping);
         if (finished.current) return;
-        setState((s) => ({ ...s, reconnecting: true }));
+        if (!opened) failedOpens++;
+        const cantConnect = failedOpens >= CANT_CONNECT_AFTER;
+        setState((s) => ({ ...s, reconnecting: true, cantConnect }));
         retry = setTimeout(connect, Math.min(10_000, 500 * 2 ** attempt++));
       };
     };

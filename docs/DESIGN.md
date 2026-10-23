@@ -82,8 +82,11 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   **event list** for the client to animate (e.g. `placed {card, row}`, `took {seat, row, bullHeads}`).
   The snapshot carries the Pick Timer `deadline` (epoch ms, or null) and the server's `now`, so
   clients can show a countdown that is right even when their clock is off.
-- All messages are JSON validated by Zod on both ends. Every message carries the protocol version;
-  on mismatch the server tells the client to reload (covers tabs left open across a deploy).
+- All messages are JSON validated by Zod on both ends (`zod/mini`, which keeps the web bundle small).
+  Every message carries the protocol version; on mismatch the server tells the client to reload
+  (covers tabs left open across a deploy).
+- The client reconnects with exponential backoff. If 3 connections in a row fail before even opening,
+  it tells the person that something (usually an ad blocker) is blocking the site, and keeps retrying.
 - The engine's RNG is seeded per Round; the seed is stored so any Game can be replayed in tests.
 - **Reactions** are the one message that is not a snapshot: a member sends `react {emoji}` with an emoji
   from a fixed set (`REACTIONS` in the protocol: 👍 😂 😱 🐮 🎉 😭), and the Room relays
