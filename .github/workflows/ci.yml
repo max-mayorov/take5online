@@ -28,7 +28,7 @@ jobs:
       # (its apt step sometimes takes 10+ minutes) and cache the headless shell per version.
       - id: playwright
         run: echo "version=$(pnpm --filter @take5/e2e exec playwright --version)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
