@@ -1,9 +1,13 @@
 import type { ClientIntent, RoomView } from '@take5/protocol';
-import { t, tControls } from './strings';
+import { useEffect, useRef, useState } from 'react';
+import { tControls } from './strings';
 
 type Send = (intent: ClientIntent) => void;
 
-/** The buttons next to one member: Host controls, and taking over a Bot's Seat. */
+/**
+ * What the viewer may do about one member: take over a Bot's Seat, and the Host's
+ * kick / let-a-bot-play / remove-Bot behind a small menu.
+ */
 export function SeatActions({
   view,
   memberId,
@@ -15,78 +19,91 @@ export function SeatActions({
 }) {
   const member = view.members.find((m) => m.id === memberId);
   if (!member || memberId === view.you) return null;
-  const isHost = view.hostId === view.you;
   const seat = view.seats.indexOf(memberId);
-  const buttons: { label: string; intent: ClientIntent }[] = [];
+  const canTake = member.bot && seat !== -1 && !view.seats.includes(view.you);
 
-  if (member.bot) {
-    if (seat !== -1 && !view.seats.includes(view.you)) {
-      buttons.push({ label: tControls.takeSeat, intent: { type: 'takeSeat', seat } });
+  const hostItems: { label: string; intent: ClientIntent }[] = [];
+  if (view.hostId === view.you) {
+    if (member.bot) {
+      if (view.phase !== 'game') {
+        hostItems.push({ label: tControls.removeBot, intent: { type: 'removeBot', memberId } });
+      }
+    } else {
+      if (seat !== -1 && !member.connected) {
+        hostItems.push({
+          label: tControls.replaceWithBot,
+          intent: { type: 'replaceWithBot', memberId },
+        });
+      }
+      hostItems.push({ label: tControls.kick, intent: { type: 'kick', memberId } });
     }
-    if (isHost && view.phase !== 'game') {
-      buttons.push({ label: tControls.removeBot, intent: { type: 'removeBot', memberId } });
-    }
-  } else if (isHost) {
-    if (seat !== -1 && !member.connected) {
-      buttons.push({
-        label: tControls.replaceWithBot,
-        intent: { type: 'replaceWithBot', memberId },
-      });
-    }
-    buttons.push({ label: tControls.kick, intent: { type: 'kick', memberId } });
   }
 
-  if (buttons.length === 0) return null;
+  if (!canTake && hostItems.length === 0) return null;
   return (
     <span className="seat-actions">
-      {buttons.map(({ label, intent }) => (
+      {canTake && (
         <button
-          key={label}
-          className="small"
-          aria-label={`${label}: ${member.nickname}`}
-          onClick={() => send(intent)}
+          className="small-button"
+          aria-label={tControls.takeSeatOf(member.nickname)}
+          onClick={() => send({ type: 'takeSeat', seat })}
         >
-          {label}
+          {tControls.takeSeat}
         </button>
-      ))}
+      )}
+      {hostItems.length > 0 && <SeatMenu name={member.nickname} items={hostItems} send={send} />}
     </span>
   );
 }
 
-/** The Seats of the running Game, with Bots and Away Players marked and their actions. */
-export function GameSeats({
-  view,
+function SeatMenu({
+  name,
+  items,
   send,
-  onLeave,
 }: {
-  view: RoomView;
+  name: string;
+  items: { label: string; intent: ClientIntent }[];
   send: Send;
-  onLeave: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    addEventListener('pointerdown', close);
+    return () => removeEventListener('pointerdown', close);
+  }, [open]);
+
   return (
-    <div className="members">
-      <h3>{tControls.seats}</h3>
-      <ol>
-        {view.gameSeats.map(({ memberId, nickname, bot }) => {
-          const member = view.members.find((m) => m.id === memberId);
-          const tags = [
-            bot && tControls.bot,
-            memberId === view.hostId && t.host,
-            memberId === view.you && t.you,
-            member && !bot && !member.connected && t.away,
-          ].filter(Boolean);
-          return (
-            <li key={memberId} className={bot ? 'bot' : member?.connected ? '' : 'muted'}>
-              {nickname}
-              {tags.length > 0 && <span className="muted"> ({tags.join(', ')})</span>}
-              <SeatActions view={view} memberId={memberId} send={send} />
-            </li>
-          );
-        })}
-      </ol>
-      <div className="row">
-        <button onClick={onLeave}>{tControls.leave}</button>
-      </div>
-    </div>
+    <span className="seat-menu-anchor" ref={ref}>
+      <button
+        className="seat-menu-button"
+        aria-label={tControls.optionsFor(name)}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        ⋮
+      </button>
+      {open && (
+        <span className="seat-menu" role="menu">
+          {items.map(({ label, intent }) => (
+            <button
+              key={label}
+              role="menuitem"
+              className={intent.type === 'kick' ? 'danger' : ''}
+              onClick={() => {
+                send(intent);
+                setOpen(false);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }

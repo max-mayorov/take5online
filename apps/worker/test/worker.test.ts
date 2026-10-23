@@ -1,10 +1,10 @@
 import { exports, env } from 'cloudflare:workers';
 import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { GRACE_PERIOD_MS, type RoomData } from '../src/room';
+import { BOT_DELAY_MAX_MS, GRACE_PERIOD_MS, pickDeadline, type RoomData } from '../src/room';
 import type { RoomObject } from '../src/room-object';
-import type { ClientIntent } from '@take5/protocol';
-import { Client, createRoom, isError, isState, isWelcome } from './client';
+import { REACTION_LIMIT, type ClientIntent } from '@take5/protocol';
+import { Client, createRoom, isError, isReaction, isState, isWelcome } from './client';
 
 describe('HTTP API', () => {
   it('creates a Room and reports that it exists', async () => {
@@ -23,6 +23,18 @@ describe('HTTP API', () => {
   it('only accepts WebSocket upgrades on /ws', async () => {
     const response = await exports.default.fetch('http://test/ws/ABCD');
     expect(response.status).toBe(426);
+  });
+
+  it('rate-limits Room creation per IP', async () => {
+    const create = () =>
+      exports.default.fetch('http://test/api/rooms', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': '203.0.113.7' },
+      });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await create()).status);
+    expect(statuses.slice(0, 10).every((s) => s === 201)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 
   it('404s unknown API routes', async () => {
@@ -106,6 +118,53 @@ describe('connections', () => {
   });
 });
 
+describe('reactions', () => {
+  it('broadcasts a Reaction to everyone in the Room, Spectators included', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const sam = await Client.join(code, 'Sam');
+    const { message: welcome } = await max.next(isWelcome);
+    const from = [max, sam].map((c) => c.messages.length);
+    max.send({ type: 'react', emoji: '🐮' });
+    for (const [i, client] of [max, sam].entries()) {
+      const { message } = await client.next(isReaction, from[i]);
+      expect(message).toMatchObject({ memberId: welcome.memberId, emoji: '🐮' });
+    }
+  });
+
+  it('rejects an emoji outside the fixed set', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const from = max.messages.length;
+    max.send({ type: 'react', emoji: '🤡' });
+    expect((await max.next(isError, from)).message.code).toBe('bad_message');
+    expect(max.messages.slice(from).some(isReaction)).toBe(false);
+  });
+
+  it('needs a Nickname first', async () => {
+    const code = await createRoom();
+    const client = await Client.connect(code);
+    client.send({ type: 'react', emoji: '👍' });
+    expect((await client.next(isError)).message.code).toBe('nickname_required');
+  });
+
+  it('drops Reactions over the per-member rate limit', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const sam = await Client.join(code, 'Sam');
+    const from = sam.messages.length;
+    for (let i = 0; i < REACTION_LIMIT + 3; i++) max.send({ type: 'react', emoji: '😂' });
+    // Messages are handled in order, so once this snapshot arrives every Reaction has been seen.
+    max.send({ type: 'sit' });
+    await sam.state(from);
+    expect(sam.messages.slice(from).filter(isReaction)).toHaveLength(REACTION_LIMIT);
+
+    // Another member has their own allowance.
+    sam.send({ type: 'react', emoji: '🎉' });
+    expect((await sam.next(isReaction, sam.messages.length)).message.emoji).toBe('🎉');
+  });
+});
+
 describe('a full Game over WebSockets', () => {
   it('plays from Lobby to Results without ever leaking a Hand', async () => {
     const code = await createRoom();
@@ -167,20 +226,25 @@ describe('Bots', () => {
       ['Bot 1', true, true],
     ]);
 
+    const stub = env.ROOMS.getByName(code);
     let room = await stateAfter(max, { type: 'start' });
+    expect(room.game!.seats[1]!.picked).toBe(false);
     for (let moves = 0; room.phase === 'game'; moves++) {
       if (moves > 300) throw new Error('Game did not finish');
       const game = room.game!;
-      // The Bot never keeps Max waiting.
-      expect(game.phase === 'choosingRow' ? game.choosingSeat : game.seats[1]!.picked).toBe(
-        game.phase === 'choosingRow' ? 0 : true,
-      );
-      room = await stateAfter(
-        max,
-        game.phase === 'choosingRow'
-          ? { type: 'chooseRow', row: 0 }
-          : { type: 'pick', card: game.hand[0]! },
-      );
+      const maxToMove =
+        game.phase === 'choosingRow' ? game.choosingSeat === 0 : !game.seats[0]!.picked;
+      if (maxToMove) {
+        room = await stateAfter(
+          max,
+          game.phase === 'choosingRow'
+            ? { type: 'chooseRow', row: 0 }
+            : { type: 'pick', card: game.hand[0]! },
+        );
+      } else {
+        // Max is waiting for the Bot to think it over.
+        room = await skipBotThinking(stub, max);
+      }
     }
     expect(room.totals.map((t) => [t.nickname, t.bot, t.games])).toEqual([
       ['Max', false, 1],
@@ -202,6 +266,7 @@ describe('Bots', () => {
       ['Max', false],
       ['Bot 1', true],
     ]);
+    room = await skipBotThinking(env.ROOMS.getByName(code), max);
     expect(room.game!.seats[1]!.picked).toBe(true);
 
     const kim = await Client.join(code, 'Kim');
@@ -273,8 +338,8 @@ describe('timers', () => {
     // The alarm is set for the deadline. Move the deadline into the past and fire it.
     await runInDurableObject(stub, async (instance: RoomObject, state) => {
       const data = roomOf(instance);
-      expect(await state.storage.getAlarm()).toBe(data.deadline!.at);
-      data.deadline!.at = Date.now() - 1;
+      expect(await state.storage.getAlarm()).toBe(pickDeadline(data));
+      data.decision!.since -= 30_000;
     });
     const from = max.messages.length;
     expect(await runDurableObjectAlarm(stub)).toBe(true);
@@ -359,6 +424,20 @@ describe('expiry', () => {
 
 function roomOf(instance: RoomObject): RoomData {
   return (instance as unknown as { room: RoomData }).room;
+}
+
+/** Pretends the current decision began long enough ago for every Bot Seat, and fires the alarm. */
+async function skipBotThinking(stub: DurableObjectStub<RoomObject>, client: Client): Promise<Room> {
+  await runInDurableObject(stub, async (instance: RoomObject, state) => {
+    const data = roomOf(instance);
+    expect(await state.storage.getAlarm()).toBeLessThanOrEqual(
+      data.decision!.since + BOT_DELAY_MAX_MS,
+    );
+    data.decision!.since -= BOT_DELAY_MAX_MS;
+  });
+  const from = client.messages.length;
+  expect(await runDurableObjectAlarm(stub)).toBe(true);
+  return client.state(from);
 }
 
 type Room = ReturnType<Client['latest']>;

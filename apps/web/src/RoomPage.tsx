@@ -1,11 +1,15 @@
 import type { GameEvent } from '@take5/engine';
-import { MAX_END_SCORE, MIN_END_SCORE, type RoomView } from '@take5/protocol';
+import { MAX_END_SCORE, MIN_END_SCORE, type Reaction, type RoomView } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
+import { BullIcon } from './Card';
 import { useRoom } from './connection';
 import { GameTable } from './GameTable';
 import { HostControls } from './HostControls';
-import { GameSeats, SeatActions } from './SeatActions';
+import { Floaters, ReactionPicker } from './Reactions';
+import { SeatActions } from './SeatActions';
+import { setMuted, useMuted } from './sound';
 import { t, tControls } from './strings';
+import { useReveal } from './useReveal';
 
 type Room = ReturnType<typeof useRoom>;
 
@@ -25,39 +29,63 @@ export function RoomPage({ code, onExit }: { code: string; onExit: () => void })
     return (
       <main className="center">
         <p>{t.reload}</p>
-        <button onClick={() => location.reload()}>{t.reloadButton}</button>
+        <button className="primary" onClick={() => location.reload()}>
+          {t.reloadButton}
+        </button>
       </main>
     );
   }
 
+  const joined = room.status === 'joined' && room.room;
   return (
     <main className="room">
-      <Header code={code} reconnecting={room.reconnecting} />
-      {room.error && <p className="error">{t.errors[room.error]}</p>}
+      <Header
+        code={code}
+        reconnecting={room.reconnecting}
+        onReact={joined ? (emoji) => room.send({ type: 'react', emoji }) : null}
+        onHome={onExit}
+      />
+      {room.error && (
+        <p className="error" role="alert">
+          {t.errors[room.error]}
+        </p>
+      )}
       {room.status === 'needNickname' && <NicknameForm onSubmit={room.join} />}
-      {room.status === 'connecting' && <p>{t.connecting}</p>}
-      {room.status === 'joined' && room.room && <Joined room={room} view={room.room} />}
+      {room.status === 'connecting' && <p className="muted">{t.connecting}</p>}
+      {joined && <Joined room={room} view={room.room!} />}
     </main>
   );
 }
 
-function Header({ code, reconnecting }: { code: string; reconnecting: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard access can be refused; the code is on screen anyway.
-    }
-  };
+function Header({
+  code,
+  reconnecting,
+  onReact,
+  onHome,
+}: {
+  code: string;
+  reconnecting: boolean;
+  onReact: ((emoji: Reaction) => void) | null;
+  onHome: () => void;
+}) {
+  const muted = useMuted();
   return (
-    <header className="row spread">
+    <header className="room-header">
+      <button className="brand-button" onClick={onHome} aria-label={t.backHome}>
+        <BullIcon className="brand-icon" />
+      </button>
       <h1>{t.room(code)}</h1>
-      <span className="row">
-        {reconnecting && <span className="muted">{t.reconnecting}</span>}
-        <button onClick={copy}>{copied ? t.copied : t.copyLink}</button>
+      {reconnecting && <span className="badge">{t.reconnecting}</span>}
+      <span className="header-tools">
+        {onReact && <ReactionPicker onReact={onReact} />}
+        <button
+          className="icon-button"
+          onClick={() => setMuted(!muted)}
+          aria-label={muted ? t.unmute : t.mute}
+          aria-pressed={muted}
+        >
+          {muted ? '🔇' : '🔊'}
+        </button>
       </span>
     </header>
   );
@@ -70,7 +98,7 @@ function NicknameForm({ onSubmit }: { onSubmit: (nickname: string) => void }) {
     if (nickname.trim()) onSubmit(nickname.trim());
   };
   return (
-    <form onSubmit={submit} className="stack">
+    <form onSubmit={submit} className="panel stack">
       <label htmlFor="nickname">{t.nicknamePrompt}</label>
       <div className="row">
         <input
@@ -79,6 +107,7 @@ function NicknameForm({ onSubmit }: { onSubmit: (nickname: string) => void }) {
           onChange={(e) => setNickname(e.target.value)}
           placeholder={t.nicknamePlaceholder}
           maxLength={16}
+          autoComplete="nickname"
           autoFocus
         />
         <button type="submit" className="primary">
@@ -90,16 +119,28 @@ function NicknameForm({ onSubmit }: { onSubmit: (nickname: string) => void }) {
 }
 
 function Joined({ room, view }: { room: Room; view: RoomView }) {
+  const { frame, skip } = useReveal(room.update);
+  // Keep the table up while the last Reveal of a Game plays out, then show Results.
+  const atTable = view.game && (view.phase === 'game' || frame !== null);
   return (
     <>
-      {view.phase === 'game' && view.game && (
-        <GameTable view={view} game={view.game} send={room.send} />
+      {atTable ? (
+        <GameTable
+          view={view}
+          game={view.game!}
+          frame={frame}
+          onSkip={skip}
+          reactions={room.reactions}
+          send={room.send}
+          onLeave={room.leave}
+        />
+      ) : (
+        <div className="lobby-layout">
+          {view.phase === 'results' && <Results view={view} />}
+          <Lobby room={room} view={view} />
+        </div>
       )}
-      {view.phase === 'results' && <Results view={view} />}
-      {view.phase !== 'game' && <Lobby room={room} view={view} />}
-      {view.phase === 'game' && <GameSeats view={view} send={room.send} onLeave={room.leave} />}
-      {view.phase === 'game' && <Members view={view} send={room.send} />}
-      <EventLog events={room.events} view={view} />
+      {!frame && <EventLog events={room.events} view={view} />}
     </>
   );
 }
@@ -108,6 +149,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
   const isHost = view.hostId === view.you;
   const seated = view.seats.includes(view.you);
   const [endScore, setEndScore] = useState(String(view.settings.endScore));
+  const [copied, setCopied] = useState(false);
   const saveEndScore = () => {
     const value = Number(endScore);
     if (Number.isInteger(value) && value >= MIN_END_SCORE && value <= MAX_END_SCORE) {
@@ -116,21 +158,43 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
       setEndScore(String(view.settings.endScore));
     }
   };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be refused; the code is on screen anyway.
+    }
+  };
 
   return (
-    <section className="stack">
-      {view.phase === 'lobby' && <h2>{t.lobby}</h2>}
-      <Members view={view} send={room.send} />
+    <section className="panel stack lobby">
+      {view.phase === 'lobby' && (
+        <div className="share">
+          <span className="muted">{t.roomCode}</span>
+          <span className="code-letters" aria-label={view.code}>
+            {[...view.code].map((letter, i) => (
+              <span key={i}>{letter}</span>
+            ))}
+          </span>
+          <button onClick={copy}>{copied ? t.copied : t.copyLink}</button>
+          <span className="muted small">{t.shareHint}</span>
+        </div>
+      )}
+      <Members view={view} reactions={room.reactions} send={room.send} />
       <div className="row wrap">
         {seated ? (
           <button onClick={() => room.send({ type: 'stand' })}>{t.stand}</button>
         ) : (
           <button onClick={() => room.send({ type: 'sit' })}>{t.sit}</button>
         )}
-        <button onClick={room.leave}>{t.leave}</button>
+        <button className="quiet" onClick={room.leave}>
+          {t.leave}
+        </button>
       </div>
       {isHost ? (
-        <div className="stack">
+        <div className="stack host-controls">
           <label className="row">
             {t.endScore}
             <input
@@ -143,8 +207,9 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
               className="narrow"
             />
           </label>
+          <HostControls view={view} send={room.send} />
           <button
-            className="primary"
+            className="primary big-button"
             disabled={view.seats.length < 2}
             onClick={() => room.send({ type: 'start' })}
           >
@@ -154,15 +219,23 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
         </div>
       ) : (
         <p className="muted">
-          {t.endScore} {view.settings.endScore}. {t.waitingForHost}
+          {t.endScore} {view.settings.endScore}. {tControls.pickTimerNote(view.settings.pickTimer)}{' '}
+          {t.waitingForHost}
         </p>
       )}
-      <HostControls view={view} send={room.send} />
     </section>
   );
 }
 
-function Members({ view, send }: { view: RoomView; send: Room['send'] }) {
+function Members({
+  view,
+  reactions,
+  send,
+}: {
+  view: RoomView;
+  reactions: Room['reactions'];
+  send: Room['send'];
+}) {
   const label = (id: string) => {
     const member = view.members.find((m) => m.id === id)!;
     const tags = [
@@ -171,8 +244,10 @@ function Members({ view, send }: { view: RoomView; send: Room['send'] }) {
       member.bot && tControls.bot,
       !member.connected && !member.bot && t.away,
     ].filter(Boolean);
+    const state = member.bot ? 'bot' : member.connected ? '' : 'away';
     return (
-      <li key={id} className={member.bot ? 'bot' : member.connected ? '' : 'muted'}>
+      <li key={id} className={`member ${state}`}>
+        <Floaters reactions={reactions} memberId={id} name={member.nickname} />
         {member.nickname}
         {tags.length > 0 && <span className="muted"> ({tags.join(', ')})</span>}
         <SeatActions view={view} memberId={id} send={send} />
@@ -182,12 +257,12 @@ function Members({ view, send }: { view: RoomView; send: Room['send'] }) {
   const watching = view.members.filter((m) => !m.seated);
   return (
     <div className="members">
-      {view.phase !== 'game' && <h3>{t.players(view.seats.length)}</h3>}
-      {view.phase !== 'game' && <ol>{view.seats.map(label)}</ol>}
+      <h3>{t.players(view.seats.length)}</h3>
+      <ol className="member-list">{view.seats.map(label)}</ol>
       {watching.length > 0 && (
         <>
           <h3>{t.spectators}</h3>
-          <ul>{watching.map((m) => label(m.id))}</ul>
+          <ul className="member-list">{watching.map((m) => label(m.id))}</ul>
         </>
       )}
     </div>
@@ -201,36 +276,57 @@ function Results({ view }: { view: RoomView }) {
     .map((s, seat) => ({ seat, score: s.score }))
     .sort((a, b) => a.score - b.score);
   return (
-    <section className="stack">
+    <section className="panel stack results">
       <h2>{t.results}</h2>
-      <p className="big">{t.winners(game.winners.map(name))}</p>
+      <p className="winner">
+        <span aria-hidden="true">🏆 </span>
+        {t.winners(game.winners.map(name))}
+      </p>
       <h3>{t.finalScores}</h3>
-      <ol>
-        {order.map(({ seat, score }) => (
-          <li key={seat}>
-            {name(seat)} — {t.bullHeads(score)}
-          </li>
-        ))}
-      </ol>
-      <h3>{t.sessionTotals}</h3>
-      <table>
+      <table className="score-table">
         <thead>
           <tr>
-            <th>{t.totalsHeader.name}</th>
-            <th>{t.totalsHeader.games}</th>
-            <th>{t.totalsHeader.wins}</th>
-            <th>{t.totalsHeader.bullHeads}</th>
+            <th>{t.scoreHeader.place}</th>
+            <th>{t.scoreHeader.name}</th>
+            <th className="num">{t.scoreHeader.score}</th>
           </tr>
         </thead>
         <tbody>
-          {view.totals.map((total) => (
-            <tr key={total.memberId}>
-              <td>{total.nickname}</td>
-              <td>{total.games}</td>
-              <td>{total.wins}</td>
-              <td>{total.bullHeads}</td>
+          {order.map(({ seat, score }) => (
+            <tr key={seat} className={game.winners.includes(seat) ? 'won' : ''}>
+              <td>{order.findIndex((o) => o.score === score) + 1}</td>
+              <td>{name(seat)}</td>
+              <td className="num">
+                <span className="with-icon">
+                  <BullIcon />
+                  {score}
+                </span>
+              </td>
             </tr>
           ))}
+        </tbody>
+      </table>
+      <h3>{t.sessionTotals}</h3>
+      <table className="score-table">
+        <thead>
+          <tr>
+            <th>{t.totalsHeader.name}</th>
+            <th className="num">{t.totalsHeader.games}</th>
+            <th className="num">{t.totalsHeader.wins}</th>
+            <th className="num">{t.totalsHeader.bullHeads}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...view.totals]
+            .sort((a, b) => b.wins - a.wins || a.bullHeads - b.bullHeads)
+            .map((total) => (
+              <tr key={total.memberId}>
+                <td>{total.nickname}</td>
+                <td className="num">{total.games}</td>
+                <td className="num">{total.wins}</td>
+                <td className="num">{total.bullHeads}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
     </section>
@@ -257,7 +353,7 @@ function EventLog({ events, view }: { events: GameEvent[]; view: RoomView }) {
   return (
     <ul className="log muted">
       {lines
-        .slice(-8)
+        .slice(-6)
         .reverse()
         .map((line, i) => (
           <li key={i}>{line}</li>

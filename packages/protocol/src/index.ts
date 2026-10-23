@@ -2,7 +2,7 @@ import { DECK_SIZE, MAX_SEATS, ROW_COUNT, type GameEvent, type GameView } from '
 import { z } from 'zod';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 4;
@@ -14,7 +14,14 @@ export const MAX_END_SCORE = 200;
 /** Pick Timer choices in seconds; 0 means off. */
 export const PICK_TIMER_OPTIONS = [0, 30, 60] as const;
 export type PickTimer = (typeof PICK_TIMER_OPTIONS)[number];
-export const DEFAULT_PICK_TIMER: PickTimer = 60;
+export const DEFAULT_PICK_TIMER: PickTimer = 0;
+
+/** The fixed set of emoji a member may react with. */
+export const REACTIONS = ['👍', '😂', '😱', '🐮', '🎉', '😭'] as const;
+export type Reaction = (typeof REACTIONS)[number];
+/** Each member may send at most this many Reactions per window; extras are dropped. */
+export const REACTION_LIMIT = 5;
+export const REACTION_WINDOW_MS = 10_000;
 
 /** Upper-cases and trims user input; returns null unless it is a well-formed Room Code. */
 export function parseRoomCode(input: string): string | null {
@@ -74,6 +81,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('replaceWithBot'), memberId }),
   /** A Spectator takes over the Seat a Bot occupies. */
   z.object({ v, type: z.literal('takeSeat'), seat }),
+  z.object({ v, type: z.literal('react'), emoji: z.enum(REACTIONS) }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -242,6 +250,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('welcome'), memberId: z.string(), token: z.string() }),
   /** A fresh snapshot after every change, plus public events to animate. */
   z.object({ v, type: z.literal('state'), room: roomViewSchema, events: z.array(gameEventSchema) }),
+  /** Someone in the Room reacted; shown briefly and never stored. */
+  z.object({ v, type: z.literal('reaction'), memberId: z.string(), emoji: z.enum(REACTIONS) }),
   z.object({ v, type: z.literal('error'), code: z.enum(ERROR_CODES) }),
   /** The client is on a different protocol version and must reload. */
   z.object({ v: z.number(), type: z.literal('reload') }),

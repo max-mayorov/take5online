@@ -85,6 +85,11 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 - All messages are JSON validated by Zod on both ends. Every message carries the protocol version;
   on mismatch the server tells the client to reload (covers tabs left open across a deploy).
 - The engine's RNG is seeded per Round; the seed is stored so any Game can be replayed in tests.
+- **Reactions** are the one message that is not a snapshot: a member sends `react {emoji}` with an emoji
+  from a fixed set (`REACTIONS` in the protocol: 👍 😂 😱 🐮 🎉 😭), and the Room relays
+  `reaction {memberId, emoji}` to every identified connection, Spectators included. Reactions are never
+  stored. The Room keeps a per-member rate limit in memory (5 per 10 s); extras are dropped silently, and
+  the limit resets if the Durable Object hibernates, which is fine for its purpose.
 
 ## Identity and joining
 
@@ -109,10 +114,10 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 
 ## Timers, disconnects and Bots
 
-- **Pick Timer**: off / 30s / 60s, default 60s. It applies to Picks and to Low Card Row choices.
+- **Pick Timer**: off / 30s / 60s, default off. It applies to Picks and to Low Card Row choices.
   When it runs out, the Bot acts for that Seat.
-- **Away**: a Player whose sockets are all closed. Their Seat is held. When the Pick Timer is on,
-  it covers them; when it is off, the Bot acts for them after the **60s Grace Period**.
+- **Away**: a Player whose sockets are all closed. Their Seat is held. The Bot acts for them once
+  they have been Away for the **60s Grace Period**, or earlier if the Pick Timer runs out first.
   On return they reclaim the Seat and play from the current Turn.
 - The Host can replace an Away Player with a Bot, or kick them.
 - **Bot Seats**: a Bot is a Room member with `bot: true`, no token and no connection, named
@@ -123,16 +128,20 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   phase, along with its Hand and Score; the Bot then leaves the Room. Session Totals key a Bot's
   row by its name, so "Bot 1" keeps one row across Games.
 - **Who the Bot acts for, and when** (`tick` in `apps/worker/src/room.ts`, run after every change
-  and on every alarm): a Bot Seat acts at once; any Seat still waiting when the Pick Timer runs out;
-  and, with the timer off, an Away Player's Seat once they have been Away for the Grace Period
-  (then on every decision until they return). Each Turn's Picks share one deadline; each Low Card
-  Row choice gets a fresh one. While nobody at all is connected the Game stands still, and the
-  Pick Timer restarts when someone returns: a table everyone walked away from doesn't play itself
-  to the end.
+  and on every alarm): a Bot Seat after a short "thinking" delay of 1–2 s per move; any Seat still
+  waiting when the Pick Timer runs out; and an Away Player's Seat once they have been Away for the
+  Grace Period (then on every decision until they return), whichever of those last two comes
+  first. Moves made on a timeout or after the Grace Period are instant. The thinking delay varies by
+  Seat and decision but is derived from the Game's seed, so a Game replays the same way and tests
+  stay deterministic. All of these count from when the Game reached the current decision: each
+  Turn's Picks are one decision, and each Low Card Row choice another. While nobody at all is
+  connected the Game stands still, and the decision's clock restarts when someone returns: a table
+  everyone walked away from doesn't play itself to the end.
 - **Alarms**: a Durable Object has one alarm, so it is always set to the Room's next wakeup, the
-  earliest of the Pick Timer deadline, the end of any relevant Grace Period (an Away Host, or an
-  Away Player the Game waits on with the timer off) and expiry. `alarm()` expires the Room or runs
-  `tick`, then re-arms. Everything it needs (`deadline`, `awaySince` per member) lives in the
+  earliest of the Bot's next move for any Seat the Game waits on (thinking delay, Pick Timer
+  deadline or Grace Period end, as above), the end of an Away Host's Grace Period, and expiry.
+  `alarm()` expires the Room or runs `tick`, then re-arms. Everything it needs (the current
+  `decision` and when it began, `awaySince` per member) lives in the
   persisted Room, so it survives eviction and hibernation. Presence is re-derived from the open
   WebSockets on every change, so a member whose sockets vanished without a close event is marked
   Away the next time anything happens.
@@ -150,9 +159,22 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   Bull-head tier (1 / 2 / 3 / 5 / 7). Tier is also readable from the icon count, so colour is never the only cue.
 - **Reveal**: Picks flip together, then Cards are Placed one by one in ascending order (~600 ms each), Takes
   animated into the Penalty Pile. A "skip" control jumps to the end state.
-- **Emoji reactions**: a small fixed set, shown floating over the sender's Seat; rate-limited.
+  - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
+    (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
+    unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in
+    order; snapshots that arrive meanwhile queue their own frames. Once they have played, or on skip, the
+    table shows the live snapshot again. The Hand is always live, so Players can Pick for the next Turn
+    while a Reveal is still showing; Row choices wait for the animation to finish.
+  - A Low Card pause is the live snapshot itself: the waiting Cards stay in the tray, the Low Card and the
+    choosing Seat are marked, and the Rows pulse for the chooser.
+  - `prefers-reduced-motion` (and a hidden tab) skips the frames and plays at most one sound.
+- **Emoji reactions**: a small fixed set, shown floating over the sender's Seat (or their name in the
+  Lobby or the Spectator list) for 2.5 s; rate-limited.
 - Light and dark theme following the system setting.
-- Sound effects for Reveal and Take, on by default, mute toggle remembered in `localStorage`.
+- Sound effects for Reveal and Take, on by default, mute toggle remembered in `localStorage`. All sounds
+  are synthesised with the Web Audio API (no audio files): a swish for the flip, a tock per Placement and
+  a low "moo" for a Take. Browsers only allow audio after a gesture, so the audio context starts on the
+  first tap or key press.
 - All UI text in a single strings module (English).
 
 ## Abuse limits

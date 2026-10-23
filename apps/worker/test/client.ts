@@ -10,11 +10,11 @@ type StateMessage = Extract<ServerMessage, { type: 'state' }>;
 
 let rooms = 0;
 
-/** Creates a Room, from a fresh client IP each time so tests stay under the rate limit. */
+/** Creates a Room from a fresh client IP each time, so tests stay under the per-IP limit. */
 export async function createRoom(): Promise<string> {
   const response = await exports.default.fetch('http://test/api/rooms', {
     method: 'POST',
-    headers: { 'CF-Connecting-IP': `10.0.${Math.floor(++rooms / 250)}.${rooms % 250}` },
+    headers: { 'CF-Connecting-IP': `198.51.100.${++rooms}` },
   });
   if (response.status !== 201) throw new Error(`create failed: ${response.status}`);
   return ((await response.json()) as { code: string }).code;
@@ -136,4 +136,8 @@ export function isError(m: ServerMessage): m is Extract<ServerMessage, { type: '
 
 export function isWelcome(m: ServerMessage): m is Extract<ServerMessage, { type: 'welcome' }> {
   return m.type === 'welcome';
+}
+
+export function isReaction(m: ServerMessage): m is Extract<ServerMessage, { type: 'reaction' }> {
+  return m.type === 'reaction';
 }

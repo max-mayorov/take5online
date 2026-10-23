@@ -24,8 +24,11 @@ import {
 
 /** Rooms with no activity for this long are deleted. */
 export const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
-/** How long an Away Player is waited for, with the Pick Timer off, before the Bot acts for them. */
+/** How long an Away Player is waited for before the Bot acts for them. */
 export const GRACE_PERIOD_MS = 60 * 1000;
+/** A Bot Seat "thinks" for this long before each move, so its moves don't land all at once. */
+export const BOT_DELAY_MIN_MS = 1000;
+export const BOT_DELAY_MAX_MS = 2000;
 
 export interface Member {
   id: string;
@@ -36,10 +39,10 @@ export interface Member {
   bot: boolean;
 }
 
-/** The running Pick Timer: when the current decision (`key`) times out. */
-export interface PickDeadline {
+/** The decision the Game is waiting on (a Turn's Picks, or one Low Card's Row) and when it began. */
+export interface Decision {
   key: string;
-  at: number;
+  since: number;
 }
 
 /** The whole persisted state of one Room. */
@@ -57,7 +60,8 @@ export interface RoomData {
   lastActivity: number;
   /** When each Away Player's last connection closed. Bots are never Away. */
   awaySince: Record<string, number>;
-  deadline: PickDeadline | null;
+  /** Null outside a Game, and while the Game stands still because nobody is connected. */
+  decision: Decision | null;
 }
 
 export type RoomResult = { ok: true; events: GameEvent[] } | { ok: false; error: ErrorCode };
@@ -78,7 +82,7 @@ export function createRoom(code: string, now: number): RoomData {
     totals: [],
     lastActivity: now,
     awaySince: {},
-    deadline: null,
+    decision: null,
   };
 }
 
@@ -90,7 +94,8 @@ export function upgradeRoom(stored: RoomData): RoomData {
   room.gameSeats = room.gameSeats.map((s) => ({ ...s, bot: s.bot ?? false }));
   room.totals = room.totals.map((t) => ({ ...t, bot: t.bot ?? false }));
   room.awaySince ??= {};
-  room.deadline ??= null;
+  room.decision ??= null;
+  delete (room as { deadline?: unknown }).deadline;
   return room;
 }
 
@@ -238,7 +243,7 @@ export function start(room: RoomData, memberId: string, seed: number): RoomResul
     return { memberId: id, nickname: member?.nickname ?? '?', bot: member?.bot ?? false };
   });
   room.phase = 'game';
-  room.deadline = null;
+  room.decision = null;
   return ok(events);
 }
 
@@ -282,22 +287,22 @@ export function isAway(room: RoomData, memberId: string): boolean {
 }
 
 /**
- * Does whatever is due at `now`: passes Host on from an Away Host, keeps the Pick Timer
- * running, and lets the Bot act for every Seat it should. While nobody is connected
- * the Game stands still. Returns the Game events this produced.
+ * Does whatever is due at `now`: passes Host on from an Away Host, keeps track of the
+ * decision the Game waits on, and lets the Bot act for every Seat it is due for. While
+ * nobody is connected the Game stands still. Returns the Game events this produced.
  */
 export function tick(room: RoomData, now: number): GameEvent[] {
   handOffHost(room, now);
   const events: GameEvent[] = [];
   if (room.phase !== 'game' || !room.game || !anyoneConnected(room)) {
-    room.deadline = null;
+    room.decision = null;
     return events;
   }
   for (;;) {
-    refreshDeadline(room, now);
+    refreshDecision(room, now);
     const game: GameState | null = room.game;
     if (room.phase !== 'game' || !game) break;
-    const seat = waitingOn(game).find((s) => botActsFor(room, s, now));
+    const seat = waitingOn(game).find((s) => botDueAt(room, s) <= now);
     if (seat === undefined) break;
     const result = apply(room, botAction(game, seat)!);
     if (!result.ok) throw new Error(`Bot move rejected: ${result.error}`);
@@ -313,16 +318,11 @@ export function nextWakeup(room: RoomData, now: number): number {
   // Only expiry is due while nobody is connected: no one to hand Host to, no one to play for.
   if (!anyoneConnected(room)) return expiry;
   const times = [expiry];
-  const graceEnd = (id: string) => room.awaySince[id]! + GRACE_PERIOD_MS;
-  if (room.hostId && isAway(room, room.hostId)) times.push(graceEnd(room.hostId));
+  if (room.hostId && isAway(room, room.hostId)) {
+    times.push(room.awaySince[room.hostId]! + GRACE_PERIOD_MS);
+  }
   if (room.phase === 'game' && room.game) {
-    if (room.deadline) times.push(room.deadline.at);
-    if (room.settings.pickTimer === 0) {
-      for (const seat of waitingOn(room.game)) {
-        const id = room.gameSeats[seat]?.memberId;
-        if (id && isAway(room, id)) times.push(graceEnd(id));
-      }
-    }
+    for (const seat of waitingOn(room.game)) times.push(botDueAt(room, seat));
   }
   const future = times.filter((t) => t > now);
   return future.length > 0 ? Math.min(...future) : expiry;
@@ -336,21 +336,48 @@ function apply(room: RoomData, action: Action): RoomResult {
   return ok(result.events);
 }
 
-/** Whether the Bot should make the Seat's pending decision right now. */
-function botActsFor(room: RoomData, seat: number, now: number): boolean {
-  const id = room.gameSeats[seat]?.memberId;
-  const member = id === undefined ? undefined : memberById(room, id);
-  if (!member || member.bot) return true;
-  if (room.deadline && now >= room.deadline.at) return true;
-  const since = room.awaySince[member.id];
-  return room.settings.pickTimer === 0 && since !== undefined && now >= since + GRACE_PERIOD_MS;
+/** When the current decision's Pick Timer runs out, or null if the timer is off or idle. */
+export function pickDeadline(room: RoomData): number | null {
+  const { decision } = room;
+  const seconds = room.settings.pickTimer;
+  return decision && seconds > 0 ? decision.since + seconds * 1000 : null;
 }
 
-/** Starts the Pick Timer afresh whenever the Game moves on to a new decision. */
-function refreshDeadline(room: RoomData, now: number): void {
+/**
+ * When the Bot makes Seat `seat`'s pending move: a Bot Seat after its thinking delay;
+ * a Player's when the Pick Timer runs out or they have been Away for the Grace Period,
+ * whichever comes first. Infinity if not at all.
+ */
+export function botDueAt(room: RoomData, seat: number): number {
+  const { decision, game } = room;
+  if (!decision || !game) return Infinity;
+  const id = room.gameSeats[seat]?.memberId;
+  const member = id === undefined ? undefined : memberById(room, id);
+  if (!member || member.bot) return decision.since + botDelay(game.seed, decision.key, seat);
+  const away = room.awaySince[member.id];
+  return Math.min(
+    pickDeadline(room) ?? Infinity,
+    away === undefined ? Infinity : away + GRACE_PERIOD_MS,
+  );
+}
+
+/**
+ * A Bot Seat's thinking time for one decision: 1–2 s, varying by Seat and decision but
+ * derived from the Game's seed, so a Game replays the same way.
+ */
+export function botDelay(seed: number, key: string, seat: number): number {
+  let hash = 0x811c9dc5;
+  for (const char of `${seed}:${key}:${seat}`) {
+    hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  }
+  return BOT_DELAY_MIN_MS + (hash % (BOT_DELAY_MAX_MS - BOT_DELAY_MIN_MS + 1));
+}
+
+/** Notes when the Game moved on to a new decision; the clocks above count from there. */
+function refreshDecision(room: RoomData, now: number): void {
   const game = room.game;
-  if (!game || game.phase === 'gameOver' || room.settings.pickTimer === 0) {
-    room.deadline = null;
+  if (!game || game.phase === 'gameOver') {
+    room.decision = null;
     return;
   }
   // One decision per Turn's Picks, and one per Low Card awaiting its Row choice.
@@ -358,9 +385,7 @@ function refreshDeadline(room: RoomData, now: number): void {
     game.phase === 'picking'
       ? `${game.round}.${game.turn}`
       : `${game.round}.${game.turn}.${game.unplaced.length}`;
-  if (room.deadline?.key !== key) {
-    room.deadline = { key, at: now + room.settings.pickTimer * 1000 };
-  }
+  if (room.decision?.key !== key) room.decision = { key, since: now };
 }
 
 function handOffHost(room: RoomData, now: number): void {
@@ -428,7 +453,7 @@ function memberById(room: RoomData, id: string): Member | undefined {
 
 function finishGame(room: RoomData, game: GameState): void {
   room.phase = 'results';
-  room.deadline = null;
+  room.decision = null;
   room.gameSeats.forEach(({ memberId, nickname, bot }, seat) => {
     // A Bot's totals follow its name, so "Bot 1" keeps one row across Games.
     let total = room.totals.find(
@@ -471,7 +496,7 @@ export function roomView(
     game: room.game ? viewFor(room.game, seat === -1 ? null : seat) : null,
     gameSeats: room.gameSeats.map((s) => ({ ...s })),
     totals: room.totals.map((t) => ({ ...t })),
-    deadline: room.phase === 'game' ? (room.deadline?.at ?? null) : null,
+    deadline: room.phase === 'game' ? pickDeadline(room) : null,
     now,
   };
 }

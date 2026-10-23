@@ -15,8 +15,12 @@ export function Countdown({ deadline, now }: { deadline: number | null; now: num
   if (deadline === null) return null;
   const seconds = Math.max(0, Math.ceil((deadline - (clock + skew)) / 1000));
   return (
-    <p className={`countdown ${seconds <= 10 ? 'urgent' : ''}`} role="timer">
-      {tControls.countdown(seconds)}
-    </p>
+    <span
+      className={`countdown ${seconds <= 10 ? 'urgent' : ''}`}
+      role="timer"
+      aria-label={tControls.countdownLabel(seconds)}
+    >
+      <span aria-hidden="true">⏱</span> {seconds}s
+    </span>
   );
 }

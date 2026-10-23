@@ -5,6 +5,7 @@ import {
   messageVersion,
   parseRoomCode,
   PROTOCOL_VERSION,
+  REACTIONS,
   serverMessageSchema,
   type ServerMessage,
 } from '../src';
@@ -35,6 +36,7 @@ describe('clientMessageSchema', () => {
     { v, type: 'kick', memberId: 'm2' },
     { v, type: 'replaceWithBot', memberId: 'm2' },
     { v, type: 'takeSeat', seat: 9 },
+    { v, type: 'react', emoji: '🐮' },
   ])('accepts %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(true);
   });
@@ -53,6 +55,9 @@ describe('clientMessageSchema', () => {
     { v, type: 'takeSeat', seat: 10 },
     { v, type: 'takeSeat', seat: -1 },
     { v, type: 'nope' },
+    { v, type: 'react', emoji: '💩' },
+    { v, type: 'react', emoji: '' },
+    { v, type: 'react' },
   ])('rejects %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(false);
   });
@@ -93,6 +98,21 @@ describe('serverMessageSchema', () => {
       events,
     };
     expect(serverMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(message);
+  });
+});
+
+describe('reactions', () => {
+  it('accepts every Reaction in both directions', () => {
+    for (const emoji of REACTIONS) {
+      expect(clientMessageSchema.safeParse({ v, type: 'react', emoji }).success).toBe(true);
+      const message = { v, type: 'reaction', memberId: 'a', emoji };
+      expect(serverMessageSchema.parse(message)).toEqual(message);
+    }
+  });
+
+  it('rejects a broadcast of an emoji outside the set', () => {
+    const message = { v, type: 'reaction', memberId: 'a', emoji: '🤡' };
+    expect(serverMessageSchema.safeParse(message).success).toBe(false);
   });
 });
 

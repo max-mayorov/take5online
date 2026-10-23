@@ -42,6 +42,10 @@ _Avoid_: Offline, disconnected, AFK
 The name a person picks for themselves on entering a Room, unique within that Room.
 _Avoid_: Username, display name, handle
 
+**Reaction**:
+An emoji from a small fixed set that a member sends to the Room; it floats over their name for a moment and is never stored.
+_Avoid_: Emote, chat, message
+
 ### Room phases
 
 **Lobby**:
@@ -133,11 +137,11 @@ _Avoid_: Points, penalty
 ### Timing
 
 **Pick Timer**:
-The per-Room time limit on making a Pick or a Low Card Row choice: off, 30s, or 60s (default).
+The per-Room time limit on making a Pick or a Low Card Row choice: off (default), 30s, or 60s.
 _Avoid_: Turn timer, clock, countdown
 
 **Grace Period**:
-The 60 seconds an Away Player is waited for, when the Pick Timer is off, before a Bot acts for them.
+The 60 seconds an Away Player is waited for before a Bot acts for them (sooner if the Pick Timer runs out first).
 _Avoid_: Timeout, reconnect window
 
 ## Relationships

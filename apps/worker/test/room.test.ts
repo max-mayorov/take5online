@@ -1,7 +1,10 @@
-import { cheapestRow } from '@take5/engine';
+import { cheapestRow, waitingOn } from '@take5/engine';
 import { describe, expect, it } from 'vitest';
 import {
   addBot,
+  BOT_DELAY_MAX_MS,
+  BOT_DELAY_MIN_MS,
+  botDelay,
   changeSettings,
   createRoom,
   GRACE_PERIOD_MS,
@@ -10,6 +13,7 @@ import {
   leave,
   memberByToken,
   nextWakeup,
+  pickDeadline,
   play,
   removeBot,
   replaceWithBot,
@@ -214,20 +218,22 @@ describe('playing with Bots', () => {
     const { room, members } = roomWith('Max');
     addBot(room, members[0]!);
     changeSettings(room, members[0]!, { endScore: 10 });
+    let now = 0;
     for (const game of [1, 2]) {
       start(room, members[0]!, game);
-      tick(room, 0);
-      // The Bot Picks at once, so Max's Pick always completes the Turn.
+      // Each step the Bot has had time to think, then Max makes any move that is his.
       for (let moves = 0; room.phase === 'game'; moves++) {
         if (moves > 500) throw new Error('Game did not finish');
-        expect(room.game!.picks[1] !== null || room.game!.phase !== 'picking').toBe(true);
+        now += BOT_DELAY_MAX_MS;
+        tick(room, now);
         const g = room.game!;
+        if (room.phase !== 'game' || !waitingOn(g).includes(0)) continue;
         const result =
           g.phase === 'choosingRow'
             ? play(room, members[0]!, { type: 'chooseRow', row: 0 })
             : play(room, members[0]!, { type: 'pick', card: g.hands[0]![0]! });
         expect(result).toMatchObject({ ok: true });
-        tick(room, 0);
+        tick(room, now);
       }
     }
     expect(room.totals.map((t) => [t.nickname, t.bot, t.games])).toEqual([
@@ -244,8 +250,43 @@ describe('playing with Bots', () => {
     expect(room.seats[1]).toBe(room.gameSeats[1]!.memberId);
     expect(room.members.map((m) => m.nickname)).toEqual(['Max', 'Bot 1']);
 
-    const events = tick(room, 0);
-    expect(events).toEqual([{ type: 'picked', seat: 1 }]);
+    expect(tick(room, 0)).toEqual([]);
+    expect(tick(room, BOT_DELAY_MAX_MS)).toEqual([{ type: 'picked', seat: 1 }]);
+  });
+
+  it('lets a Bot Seat think for 1–2 seconds before each move', () => {
+    const { room, members } = roomWith('Max');
+    addBot(room, members[0]!);
+    addBot(room, members[0]!);
+    start(room, members[0]!, 7);
+    tick(room, 10_000);
+    const due = [1, 2].map((seat) => 10_000 + botDelay(7, room.decision!.key, seat));
+    for (const at of due) {
+      expect(at - 10_000).toBeGreaterThanOrEqual(BOT_DELAY_MIN_MS);
+      expect(at - 10_000).toBeLessThanOrEqual(BOT_DELAY_MAX_MS);
+    }
+    expect(nextWakeup(room, 10_000)).toBe(Math.min(...due));
+    expect(tick(room, Math.min(...due) - 1)).toEqual([]);
+    expect(tick(room, Math.max(...due))).toEqual([
+      { type: 'picked', seat: 1 },
+      { type: 'picked', seat: 2 },
+    ]);
+  });
+
+  it('derives Bot thinking time from the seed, varying by Seat and decision', () => {
+    expect(botDelay(1, '1.1', 1)).toBe(botDelay(1, '1.1', 1));
+    const delays = new Set(
+      [1, 2, 3].flatMap((seed) =>
+        ['1.1', '1.2', '1.2.3'].flatMap((key) =>
+          [0, 1, 2].map((seat) => botDelay(seed, key, seat)),
+        ),
+      ),
+    );
+    expect(delays.size).toBeGreaterThan(20);
+    for (const delay of delays) {
+      expect(delay).toBeGreaterThanOrEqual(BOT_DELAY_MIN_MS);
+      expect(delay).toBeLessThanOrEqual(BOT_DELAY_MAX_MS);
+    }
   });
 
   it('lets a Spectator take over a Bot’s Seat mid-Game, Hand and Score included', () => {
@@ -253,6 +294,7 @@ describe('playing with Bots', () => {
     start(room, members[0]!, 1);
     leave(room, members[1]!);
     tick(room, 0);
+    tick(room, BOT_DELAY_MAX_MS);
     const late = join(room, 'Late', ids());
     if (!late.ok) throw new Error();
     const hand = room.game!.hands[1];
@@ -362,11 +404,17 @@ describe('Host controls', () => {
 });
 
 describe('Pick Timer', () => {
-  it('defaults to 60 seconds and can be set to 30 or off', () => {
-    const { room, members } = roomWith('Max');
-    expect(room.settings.pickTimer).toBe(60);
-    changeSettings(room, members[0]!, { pickTimer: 0 });
-    expect(room.settings).toEqual({ endScore: 66, pickTimer: 0 });
+  it('is off by default and can be set to 30 or 60 seconds', () => {
+    const { room, members } = roomWith('Max', 'Sam');
+    expect(room.settings.pickTimer).toBe(0);
+    start(room, members[0]!, 1);
+    tick(room, 0);
+    expect(pickDeadline(room)).toBeNull();
+    expect(roomView(room, members[0]!, new Set(), 0).deadline).toBeNull();
+    expect(nextWakeup(room, 0)).toBe(room.lastActivity + ROOM_TTL_MS);
+    playOut(room);
+    changeSettings(room, members[0]!, { pickTimer: 60 });
+    expect(room.settings).toEqual({ endScore: 66, pickTimer: 60 });
     changeSettings(room, members[0]!, { pickTimer: 30 });
     expect(room.settings.pickTimer).toBe(30);
   });
@@ -376,7 +424,7 @@ describe('Pick Timer', () => {
     changeSettings(room, members[0]!, { pickTimer: 30 });
     start(room, members[0]!, 1);
     tick(room, 1000);
-    expect(room.deadline?.at).toBe(31_000);
+    expect(pickDeadline(room)).toBe(31_000);
     expect(roomView(room, members[0]!, new Set(), 2000)).toMatchObject({
       deadline: 31_000,
       now: 2000,
@@ -392,11 +440,12 @@ describe('Pick Timer', () => {
       expect.objectContaining({ type: 'revealed' }),
     ]);
     // A fresh Pick Timer for the next decision.
-    expect(room.deadline!.at).toBe(61_000);
+    expect(pickDeadline(room)).toBe(61_000);
   });
 
   it('lets the Bot Take the cheapest Row when a Low Card choice runs out', () => {
     const { room, members } = roomWith('Max', 'Sam');
+    changeSettings(room, members[0]!, { pickTimer: 60 });
     for (let seed = 1; ; seed++) {
       start(room, members[0]!, seed);
       // Both Pick their lowest Card until someone must choose a Row.
@@ -412,20 +461,35 @@ describe('Pick Timer', () => {
     const chooser = room.game!.unplaced[0]!.seat;
     const cheapest = cheapestRow(room.game!.board);
     tick(room, 5000);
-    expect(room.deadline!.at).toBe(65_000);
+    expect(pickDeadline(room)).toBe(65_000);
     expect(tick(room, 64_999)).toEqual([]);
     const events = tick(room, 65_000);
     expect(events[0]).toMatchObject({ type: 'rowTaken', seat: chooser, row: cheapest });
   });
 
-  it('covers Away Players when it is on: no Grace Period on top', () => {
+  it('covers Away Players when it runs out before their Grace Period ends', () => {
     const { room, members } = roomWith('Max', 'Sam');
+    changeSettings(room, members[0]!, { pickTimer: 30 });
     start(room, members[0]!, 1);
     syncPresence(room, new Set([members[0]!]), 0);
     tick(room, 0);
+    expect(nextWakeup(room, 0)).toBe(30_000);
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
+    expect(tick(room, 29_999)).toEqual([]);
+    expect(tick(room, 30_000)[0]).toEqual({ type: 'picked', seat: 1 });
+  });
+
+  it('lets the Grace Period end first for someone Away since before the decision', () => {
+    const { room, members } = roomWith('Max', 'Sam');
+    changeSettings(room, members[0]!, { pickTimer: 60 });
+    start(room, members[0]!, 1);
+    syncPresence(room, new Set([members[0]!]), 0);
+    tick(room, 30_000);
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
+    expect(pickDeadline(room)).toBe(90_000);
+    expect(nextWakeup(room, 30_000)).toBe(GRACE_PERIOD_MS);
     expect(tick(room, GRACE_PERIOD_MS - 1)).toEqual([]);
-    expect(room.game!.picks[1]).toBeNull();
-    expect(nextWakeup(room, 0)).toBe(60_000);
+    expect(tick(room, GRACE_PERIOD_MS)[0]).toEqual({ type: 'picked', seat: 1 });
   });
 });
 
@@ -441,7 +505,7 @@ describe('Away Players with the Pick Timer off', () => {
   it('waits the Grace Period, then lets the Bot act for them on every decision', () => {
     const { room, members } = awayGame();
     expect(tick(room, 1000)).toEqual([]);
-    expect(room.deadline).toBeNull();
+    expect(pickDeadline(room)).toBeNull();
     expect(nextWakeup(room, 1000)).toBe(1000 + GRACE_PERIOD_MS);
     expect(tick(room, GRACE_PERIOD_MS)).toEqual([]);
     expect(tick(room, 1000 + GRACE_PERIOD_MS)).toEqual([{ type: 'picked', seat: 1 }]);
@@ -489,14 +553,16 @@ describe('presence', () => {
     const { room } = roomWith('Max');
     const old = JSON.parse(JSON.stringify(room)) as Record<string, unknown>;
     delete old.awaySince;
-    delete old.deadline;
+    delete old.decision;
+    old.deadline = null;
     (old.settings as Record<string, unknown>).pickTimer = undefined;
     for (const m of old.members as Record<string, unknown>[]) delete m.bot;
     const upgraded = upgradeRoom(old as unknown as RoomData);
-    expect(upgraded.settings.pickTimer).toBe(60);
+    expect(upgraded.settings.pickTimer).toBe(0);
     expect(upgraded.members[0]!.bot).toBe(false);
     expect(upgraded.awaySince).toEqual({});
-    expect(upgraded.deadline).toBeNull();
+    expect(upgraded.decision).toBeNull();
+    expect('deadline' in upgraded).toBe(false);
   });
 });
 

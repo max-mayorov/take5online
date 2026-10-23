@@ -7,7 +7,7 @@ import {
 } from '@take5/protocol';
 import { tControls } from './strings';
 
-/** Lobby settings beyond the End Score: the Pick Timer and seating Bots. */
+/** The Host's Lobby settings beyond the End Score: the Pick Timer and seating Bots. */
 export function HostControls({
   view,
   send,
@@ -15,15 +15,12 @@ export function HostControls({
   view: RoomView;
   send: (intent: ClientIntent) => void;
 }) {
-  const { pickTimer } = view.settings;
-  if (view.hostId !== view.you)
-    return <p className="muted">{tControls.pickTimerNote(pickTimer)}</p>;
   return (
-    <div className="row wrap">
+    <>
       <label className="row">
         {tControls.pickTimer}
         <select
-          value={pickTimer}
+          value={view.settings.pickTimer}
           onChange={(e) =>
             send({ type: 'settings', pickTimer: Number(e.target.value) as PickTimer })
           }
@@ -35,9 +32,13 @@ export function HostControls({
           ))}
         </select>
       </label>
-      <button disabled={view.seats.length >= MAX_SEATS} onClick={() => send({ type: 'addBot' })}>
-        {tControls.addBot}
+      <button
+        className="add-bot"
+        disabled={view.seats.length >= MAX_SEATS}
+        onClick={() => send({ type: 'addBot' })}
+      >
+        🤖 {tControls.addBot}
       </button>
-    </div>
+    </>
   );
 }
