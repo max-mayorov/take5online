@@ -4,9 +4,11 @@ import {
   serverMessageSchema,
   type ClientIntent,
   type ErrorCode,
+  type Reaction,
   type RoomView,
 } from '@take5/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Update } from './useReveal';
 
 export type Status = 'connecting' | 'needNickname' | 'joined' | 'notFound' | 'reload' | 'left';
 
@@ -17,8 +19,21 @@ export interface RoomConnection {
   error: ErrorCode | null;
   /** Events from recent snapshots, newest last. */
   events: GameEvent[];
+  /** The latest snapshot change, for animating it. */
+  update: Update | null;
+  /** Reactions received in the last few seconds. */
+  reactions: ReactionShown[];
   reconnecting: boolean;
 }
+
+export interface ReactionShown {
+  id: number;
+  memberId: string;
+  emoji: Reaction;
+}
+
+/** How long a Reaction floats on screen. */
+export const REACTION_MS = 2500;
 
 const PING_MS = 25_000;
 const MAX_EVENTS = 40;
@@ -49,6 +64,8 @@ export function useRoom(code: string) {
     room: null,
     error: null,
     events: [],
+    update: null,
+    reactions: [],
     reconnecting: false,
   });
   const socket = useRef<WebSocket | null>(null);
@@ -66,6 +83,9 @@ export function useRoom(code: string) {
     let attempt = 0;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let ping: ReturnType<typeof setInterval> | undefined;
+    let seq = 0;
+    let reactionId = 0;
+    const reactionTimers = new Set<ReturnType<typeof setTimeout>>();
 
     const hello = (ws: WebSocket) => {
       const token = readToken(code);
@@ -112,14 +132,27 @@ export function useRoom(code: string) {
             pendingNickname.current = null;
             setState((s) => ({ ...s, status: 'joined', reconnecting: false }));
             break;
-          case 'state':
+          case 'state': {
+            const update = { seq: ++seq, events: message.events };
             setState((s) => ({
               ...s,
               room: message.room,
               error: null,
               events: [...s.events, ...message.events].slice(-MAX_EVENTS),
+              update: { ...update, before: s.room?.game ?? null },
             }));
             break;
+          }
+          case 'reaction': {
+            const shown = { id: ++reactionId, memberId: message.memberId, emoji: message.emoji };
+            setState((s) => ({ ...s, reactions: [...s.reactions, shown] }));
+            const timer = setTimeout(() => {
+              reactionTimers.delete(timer);
+              setState((s) => ({ ...s, reactions: s.reactions.filter((r) => r !== shown) }));
+            }, REACTION_MS);
+            reactionTimers.add(timer);
+            break;
+          }
           case 'reload':
             finished.current = true;
             setState((s) => ({ ...s, status: 'reload' }));
@@ -152,6 +185,7 @@ export function useRoom(code: string) {
       finished.current = true;
       clearTimeout(retry);
       clearInterval(ping);
+      reactionTimers.forEach(clearTimeout);
       socket.current?.close(1000, 'unmount');
     };
   }, [code]);

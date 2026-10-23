@@ -5,6 +5,7 @@ import {
   messageVersion,
   parseRoomCode,
   PROTOCOL_VERSION,
+  REACTIONS,
   serverMessageSchema,
   type ServerMessage,
 } from '../src';
@@ -28,6 +29,7 @@ describe('clientMessageSchema', () => {
     { v, type: 'pick', card: 104 },
     { v, type: 'chooseRow', row: 3 },
     { v, type: 'settings', endScore: 66 },
+    { v, type: 'react', emoji: '🐮' },
   ])('accepts %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(true);
   });
@@ -41,6 +43,9 @@ describe('clientMessageSchema', () => {
     { v, type: 'hello', nickname: 'x'.repeat(17) },
     { v, type: 'settings', endScore: 5 },
     { v, type: 'nope' },
+    { v, type: 'react', emoji: '💩' },
+    { v, type: 'react', emoji: '' },
+    { v, type: 'react' },
   ])('rejects %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(false);
   });
@@ -76,6 +81,21 @@ describe('serverMessageSchema', () => {
       events,
     };
     expect(serverMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(message);
+  });
+});
+
+describe('reactions', () => {
+  it('accepts every Reaction in both directions', () => {
+    for (const emoji of REACTIONS) {
+      expect(clientMessageSchema.safeParse({ v, type: 'react', emoji }).success).toBe(true);
+      const message = { v, type: 'reaction', memberId: 'a', emoji };
+      expect(serverMessageSchema.parse(message)).toEqual(message);
+    }
+  });
+
+  it('rejects a broadcast of an emoji outside the set', () => {
+    const message = { v, type: 'reaction', memberId: 'a', emoji: '🤡' };
+    expect(serverMessageSchema.safeParse(message).success).toBe(false);
   });
 });
 

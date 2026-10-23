@@ -1,94 +1,97 @@
-import { bullHeads, type Card, type GameView } from '@take5/engine';
+import type { GameView } from '@take5/engine';
 import type { ClientIntent, RoomView } from '@take5/protocol';
+import { Board } from './Board';
+import type { ReactionShown } from './connection';
+import { Hand } from './Hand';
+import { Floaters } from './Reactions';
+import { RevealTray } from './RevealTray';
+import { tableFrom, type Frame } from './reveal';
+import { SeatStrip } from './SeatStrip';
 import { t } from './strings';
+import { TakeFlight } from './TakeFlight';
 
 interface Props {
   view: RoomView;
   game: GameView;
+  /** The Reveal step being shown, or null for the live snapshot. */
+  frame: Frame | null;
+  onSkip: () => void;
+  reactions: ReactionShown[];
   send: (intent: ClientIntent) => void;
 }
 
-export function GameTable({ view, game, send }: Props) {
+export function GameTable({ view, game, frame, onSkip, reactions, send }: Props) {
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
+  const table = frame?.table ?? tableFrom(game);
+  const animating = frame !== null;
   const mySeat = game.seat;
-  const iMustChoose = game.phase === 'choosingRow' && game.choosingSeat === mySeat;
+  const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
 
   let prompt: string;
-  if (mySeat === null) prompt = t.spectating;
+  if (animating) prompt = table.roundEnded ? t.roundOver(table.roundEnded) : t.revealing;
+  else if (mySeat === null) prompt = t.spectating;
   else if (iMustChoose) prompt = t.chooseRowPrompt(game.unplaced[0]!.card);
   else if (game.phase === 'choosingRow') prompt = t.othersChoosing(name(game.choosingSeat!));
   else prompt = game.pick === null ? t.pickPrompt : t.picked;
 
-  return (
-    <section className="stack">
-      <p className="muted">{t.round(game.round, game.turn)}</p>
-      <ul className="scores">
-        {game.seats.map((seat, i) => (
-          <li key={i} className={i === mySeat ? 'me' : ''}>
-            <span>
-              {name(i)} {seat.picked && t.pickedMark}
-            </span>
-            <span>{t.bullHeads(seat.score)}</span>
-          </li>
-        ))}
-      </ul>
+  const watching = view.members.filter((m) => !view.gameSeats.some((s) => s.memberId === m.id));
 
-      <div className="board">
-        {game.board.map((row, i) => (
-          <button
-            key={i}
-            className={`board-row ${iMustChoose ? 'choosable' : ''}`}
-            disabled={!iMustChoose}
-            onClick={() => send({ type: 'chooseRow', row: i })}
-            aria-label={t.rowLabel(i)}
-          >
-            {row.map((card) => (
-              <CardFace key={card} card={card} />
-            ))}
-            <span className="row-total muted">
-              {t.bullHeads(row.reduce((n, c) => n + bullHeads(c), 0))}
-            </span>
+  return (
+    <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
+      <div className="table-top">
+        <span className="muted">{t.round(game.round, game.turn)}</span>
+        {animating && (
+          <button className="skip" onClick={onSkip}>
+            {t.skip} ⏭
           </button>
-        ))}
+        )}
       </div>
 
-      {game.unplaced.length > 0 && (
-        <div className="row wrap">
-          {game.unplaced.map((p) => (
-            <span key={p.card} className="row">
-              <CardFace card={p.card} /> {name(p.seat)}
-            </span>
-          ))}
-        </div>
+      <div className="table-seats">
+        <SeatStrip view={view} game={game} table={table} reactions={reactions} />
+        {watching.length > 0 && (
+          <p className="watching muted">
+            {t.spectators}:{' '}
+            {watching.map((m) => (
+              <span key={m.id} className="watcher">
+                <Floaters reactions={reactions} memberId={m.id} name={m.nickname} />
+                {m.nickname}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+
+      <Board
+        table={table}
+        choosable={iMustChoose}
+        onChoose={(row) => send({ type: 'chooseRow', row })}
+      />
+
+      <div className="status">
+        {table.tray.length > 0 && (
+          <RevealTray
+            tray={table.tray}
+            faceDown={table.faceDown}
+            choosing={animating ? null : table.choosing}
+            name={name}
+          />
+        )}
+        <p className={`prompt ${iMustChoose ? 'urgent' : ''}`} aria-live="polite">
+          {prompt}
+        </p>
+      </div>
+
+      {mySeat !== null && game.phase !== 'gameOver' && (
+        <Hand
+          hand={game.hand}
+          pick={game.pick}
+          enabled={game.phase === 'picking'}
+          onPick={(card) => send({ type: 'pick', card })}
+        />
       )}
 
-      <p className="prompt">{prompt}</p>
-
-      {mySeat !== null && (
-        <div className="hand" aria-label={t.yourHand}>
-          {game.pick !== null && <CardFace card={game.pick} selected />}
-          {game.hand.map((card) => (
-            <button
-              key={card}
-              className="card-button"
-              disabled={game.phase !== 'picking'}
-              onClick={() => send({ type: 'pick', card })}
-            >
-              <CardFace card={card} />
-            </button>
-          ))}
-        </div>
-      )}
+      <TakeFlight flight={table.flight} />
     </section>
-  );
-}
-
-function CardFace({ card, selected = false }: { card: Card; selected?: boolean }) {
-  const heads = bullHeads(card);
-  return (
-    <span className={`card tier-${heads} ${selected ? 'selected' : ''}`} data-card={card}>
-      <span className="card-number">{card}</span>
-      <span className="card-heads">{'🐮'.repeat(heads)}</span>
-    </span>
   );
 }

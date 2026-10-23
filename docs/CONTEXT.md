@@ -42,6 +42,10 @@ _Avoid_: Offline, disconnected, AFK
 The name a person picks for themselves on entering a Room, unique within that Room.
 _Avoid_: Username, display name, handle
 
+**Reaction**:
+An emoji from a small fixed set that a member sends to the Room; it floats over their name for a moment and is never stored.
+_Avoid_: Emote, chat, message
+
 ### Room phases
 
 **Lobby**:

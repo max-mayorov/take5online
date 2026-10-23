@@ -1,5 +1,6 @@
 import { parseRoomCode, type CreateRoomResponse } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
+import { CardFace } from './Card';
 import { t } from './strings';
 
 export function Home({ onEnter }: { onEnter: (code: string) => void }) {
@@ -29,23 +30,35 @@ export function Home({ onEnter }: { onEnter: (code: string) => void }) {
 
   return (
     <main className="home">
-      <h1>{t.appName}</h1>
-      <p>{t.tagline}</p>
-      <button className="primary" onClick={create} disabled={creating}>
+      <div className="hero-cards" aria-hidden="true">
+        {[7, 55, 30, 104].map((card) => (
+          <CardFace key={card} card={card} />
+        ))}
+      </div>
+      <h1 className="title">{t.appName}</h1>
+      <p className="tagline">{t.tagline}</p>
+      <p className="muted">{t.homeHow}</p>
+      <button className="primary big-button" onClick={create} disabled={creating}>
         {creating ? t.creating : t.createRoom}
       </button>
-      <form onSubmit={join} className="row">
+      <p className="divider muted">{t.or}</p>
+      <form onSubmit={join} className="row join-form">
         <input
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder={t.roomCodePlaceholder}
           maxLength={4}
           autoCapitalize="characters"
+          autoComplete="off"
           aria-label={t.roomCodePlaceholder}
         />
         <button type="submit">{t.joinRoom}</button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
     </main>
   );
 }
