@@ -10,23 +10,32 @@ import {
   type ServerMessage,
 } from '@take5/protocol';
 import {
+  addBot,
+  changeSettings,
   createRoom,
   join,
+  kick,
   leave,
   memberByToken,
+  nextWakeup,
   play,
+  removeBot,
+  replaceWithBot,
+  ROOM_TTL_MS,
   roomView,
-  setEndScore,
   sit,
   stand,
   start,
+  syncPresence,
+  takeSeat,
+  tick,
+  upgradeRoom,
   type RoomData,
   type RoomResult,
 } from './room';
 import type { Env } from './env';
 
-/** Rooms with no activity for this long are deleted. */
-export const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+export { ROOM_TTL_MS } from './room';
 
 interface Attachment {
   memberId: string | null;
@@ -35,6 +44,9 @@ interface Attachment {
 /**
  * One Room. The single authority for its state; holds every connection via the
  * WebSocket Hibernation API and persists the Room after every change.
+ *
+ * Its single alarm is always set to the Room's next wakeup: the earliest of the Pick
+ * Timer deadline, the end of a Grace Period, and expiry. `alarm()` does whatever is due.
  */
 export class RoomObject extends DurableObject<Env> {
   private room: RoomData | null = null;
@@ -43,7 +55,8 @@ export class RoomObject extends DurableObject<Env> {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     void ctx.blockConcurrencyWhile(async () => {
-      this.room = (await ctx.storage.get<RoomData>('room')) ?? null;
+      const stored = await ctx.storage.get<RoomData>('room');
+      this.room = stored ? upgradeRoom(stored) : null;
     });
   }
 
@@ -51,7 +64,7 @@ export class RoomObject extends DurableObject<Env> {
   async create(code: string): Promise<boolean> {
     if (this.room) return false;
     this.room = createRoom(code, Date.now());
-    await this.save();
+    await this.commit([]);
     return true;
   }
 
@@ -97,22 +110,21 @@ export class RoomObject extends DurableObject<Env> {
     const result = this.handle(room, memberId, message);
     if (!result.ok) return sendError(ws, result.error);
     room.lastActivity = Date.now();
-    await this.save();
-    this.broadcast(result.events);
+    await this.commit(result.events);
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    this.broadcast([], ws);
+    await this.commit([], ws);
   }
 
   override async webSocketError(ws: WebSocket): Promise<void> {
-    this.broadcast([], ws);
+    await this.commit([], ws);
   }
 
   override async alarm(): Promise<void> {
     const room = this.room;
     if (room && Date.now() - room.lastActivity < ROOM_TTL_MS) {
-      await this.ctx.storage.setAlarm(room.lastActivity + ROOM_TTL_MS);
+      await this.commit([]);
       return;
     }
     for (const ws of this.ctx.getWebSockets()) ws.close(4004, 'room_expired');
@@ -136,11 +148,10 @@ export class RoomObject extends DurableObject<Env> {
       if (!joined.ok) return sendError(ws, joined.error);
       member = joined.member;
       room.lastActivity = Date.now();
-      await this.save();
     }
     ws.serializeAttachment({ memberId: member.id } satisfies Attachment);
     send(ws, { v: PROTOCOL_VERSION, type: 'welcome', memberId: member.id, token: member.token });
-    this.broadcast([]);
+    await this.commit([]);
   }
 
   private handle(
@@ -159,49 +170,81 @@ export class RoomObject extends DurableObject<Env> {
         return result;
       }
       case 'settings':
-        return setEndScore(room, memberId, message.endScore);
+        return changeSettings(room, memberId, message);
       case 'start':
         return start(room, memberId, randomSeed());
       case 'pick':
         return play(room, memberId, { type: 'pick', card: message.card });
       case 'chooseRow':
         return play(room, memberId, { type: 'chooseRow', row: message.row });
+      case 'addBot':
+        return addBot(room, memberId);
+      case 'removeBot':
+        return removeBot(room, memberId, message.memberId);
+      case 'kick': {
+        const result = kick(room, memberId, message.memberId);
+        if (result.ok) this.disconnect(message.memberId, 'kicked');
+        return result;
+      }
+      case 'replaceWithBot':
+        return replaceWithBot(room, memberId, message.memberId);
+      case 'takeSeat':
+        return takeSeat(room, memberId, message.seat);
     }
   }
 
-  /** Sends every identified connection its own snapshot plus the public events. */
-  private broadcast(events: GameEvent[], closing?: WebSocket): void {
+  /**
+   * After any change: records who is connected, lets timers and Bots do what is due,
+   * persists the Room, re-arms the alarm and sends everyone a fresh snapshot.
+   */
+  private async commit(events: GameEvent[], closing?: WebSocket): Promise<void> {
     const room = this.room;
     if (!room) return;
-    const sockets = this.ctx.getWebSockets().filter((ws) => ws !== closing);
-    const ids = sockets.map((ws) => (ws.deserializeAttachment() as Attachment).memberId);
-    const connected = new Set(ids.filter((id): id is string => id !== null));
-    sockets.forEach((ws, i) => {
-      const memberId = ids[i];
+    const now = Date.now();
+    syncPresence(room, this.connected(closing), now);
+    events.push(...tick(room, now));
+    await this.ctx.storage.put('room', room);
+    await this.ctx.storage.setAlarm(nextWakeup(room, now));
+    this.broadcast(events, now, closing);
+  }
+
+  /** Member ids with at least one open connection, leaving out one that is closing. */
+  private connected(closing?: WebSocket): Set<string> {
+    const ids = this.ctx
+      .getWebSockets()
+      .filter((ws) => ws !== closing)
+      .map((ws) => (ws.deserializeAttachment() as Attachment).memberId);
+    return new Set(ids.filter((id): id is string => id !== null));
+  }
+
+  /** Sends every identified connection its own snapshot plus the public events. */
+  private broadcast(events: GameEvent[], now: number, closing?: WebSocket): void {
+    const room = this.room;
+    if (!room) return;
+    const connected = this.connected(closing);
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === closing) continue;
+      const { memberId } = ws.deserializeAttachment() as Attachment;
       if (memberId && room.members.some((m) => m.id === memberId)) {
         send(ws, {
           v: PROTOCOL_VERSION,
           type: 'state',
-          room: roomView(room, memberId, connected),
+          room: roomView(room, memberId, connected, now),
           events,
         });
-      }
-    });
-  }
-
-  private disconnect(memberId: string): void {
-    for (const ws of this.ctx.getWebSockets()) {
-      if ((ws.deserializeAttachment() as Attachment).memberId === memberId) {
-        ws.serializeAttachment({ memberId: null } satisfies Attachment);
-        ws.close(4000, 'left');
       }
     }
   }
 
-  private async save(): Promise<void> {
-    if (!this.room) return;
-    await this.ctx.storage.put('room', this.room);
-    await this.ctx.storage.setAlarm(this.room.lastActivity + ROOM_TTL_MS);
+  /** Closes a member's connections, telling them first if they were kicked. */
+  private disconnect(memberId: string, reason: 'left' | 'kicked' = 'left'): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if ((ws.deserializeAttachment() as Attachment).memberId === memberId) {
+        ws.serializeAttachment({ memberId: null } satisfies Attachment);
+        if (reason === 'kicked') sendError(ws, 'kicked');
+        ws.close(reason === 'kicked' ? 4001 : 4000, reason);
+      }
+    }
   }
 }
 

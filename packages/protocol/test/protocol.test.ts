@@ -28,6 +28,13 @@ describe('clientMessageSchema', () => {
     { v, type: 'pick', card: 104 },
     { v, type: 'chooseRow', row: 3 },
     { v, type: 'settings', endScore: 66 },
+    { v, type: 'settings', pickTimer: 0 },
+    { v, type: 'settings', endScore: 40, pickTimer: 30 },
+    { v, type: 'addBot' },
+    { v, type: 'removeBot', memberId: 'b1' },
+    { v, type: 'kick', memberId: 'm2' },
+    { v, type: 'replaceWithBot', memberId: 'm2' },
+    { v, type: 'takeSeat', seat: 9 },
   ])('accepts %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(true);
   });
@@ -40,6 +47,11 @@ describe('clientMessageSchema', () => {
     { v, type: 'hello', nickname: '   ' },
     { v, type: 'hello', nickname: 'x'.repeat(17) },
     { v, type: 'settings', endScore: 5 },
+    { v, type: 'settings', pickTimer: 45 },
+    { v, type: 'kick' },
+    { v, type: 'removeBot', memberId: 'x'.repeat(65) },
+    { v, type: 'takeSeat', seat: 10 },
+    { v, type: 'takeSeat', seat: -1 },
     { v, type: 'nope' },
   ])('rejects %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(false);
@@ -63,15 +75,20 @@ describe('serverMessageSchema', () => {
         phase: 'game',
         hostId: 'a',
         you: 'a',
-        members: [{ id: 'a', nickname: 'Max', connected: true, seated: true }],
+        members: [
+          { id: 'a', nickname: 'Max', connected: true, seated: true, bot: false },
+          { id: 'b', nickname: 'Bot 1', connected: false, seated: true, bot: true },
+        ],
         seats: ['a', 'b'],
-        settings: { endScore: 66 },
+        settings: { endScore: 66, pickTimer: 60 },
         game: viewFor(state, 0),
         gameSeats: [
-          { memberId: 'a', nickname: 'Max' },
-          { memberId: 'b', nickname: 'Sam' },
+          { memberId: 'a', nickname: 'Max', bot: false },
+          { memberId: 'b', nickname: 'Bot 1', bot: true },
         ],
-        totals: [],
+        totals: [{ memberId: 'b', nickname: 'Bot 1', bot: true, games: 1, wins: 1, bullHeads: 4 }],
+        deadline: 1_700_000_060_000,
+        now: 1_700_000_000_000,
       },
       events,
     };

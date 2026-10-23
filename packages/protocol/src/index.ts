@@ -2,7 +2,7 @@ import { DECK_SIZE, MAX_SEATS, ROW_COUNT, type GameEvent, type GameView } from '
 import { z } from 'zod';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 4;
@@ -11,6 +11,10 @@ export const MAX_SPECTATORS = 20;
 export const DEFAULT_END_SCORE = 66;
 export const MIN_END_SCORE = 10;
 export const MAX_END_SCORE = 200;
+/** Pick Timer choices in seconds; 0 means off. */
+export const PICK_TIMER_OPTIONS = [0, 30, 60] as const;
+export type PickTimer = (typeof PICK_TIMER_OPTIONS)[number];
+export const DEFAULT_PICK_TIMER: PickTimer = 60;
 
 /** Upper-cases and trims user input; returns null unless it is a well-formed Room Code. */
 export function parseRoomCode(input: string): string | null {
@@ -33,6 +37,8 @@ const row = z
   .min(0)
   .max(ROW_COUNT - 1);
 const v = z.literal(PROTOCOL_VERSION);
+const memberId = z.string().max(64);
+const pickTimer = z.literal(PICK_TIMER_OPTIONS);
 
 // ---------------------------------------------------------------------------
 // Client → server
@@ -48,14 +54,26 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('sit') }),
   z.object({ v, type: z.literal('stand') }),
   z.object({ v, type: z.literal('leave') }),
+  /** Host only, outside a Game. Either field may be left out to keep it as it is. */
   z.object({
     v,
     type: z.literal('settings'),
-    endScore: z.number().int().min(MIN_END_SCORE).max(MAX_END_SCORE),
+    endScore: z.number().int().min(MIN_END_SCORE).max(MAX_END_SCORE).optional(),
+    pickTimer: pickTimer.optional(),
   }),
   z.object({ v, type: z.literal('start') }),
   z.object({ v, type: z.literal('pick'), card }),
   z.object({ v, type: z.literal('chooseRow'), row }),
+  /** Host only, outside a Game: seat a new Bot in a free Seat. */
+  z.object({ v, type: z.literal('addBot') }),
+  /** Host only, outside a Game: remove a Bot from its Seat. */
+  z.object({ v, type: z.literal('removeBot'), memberId }),
+  /** Host only: remove someone from the Room for good; a seated Player's Game Seat becomes a Bot's. */
+  z.object({ v, type: z.literal('kick'), memberId }),
+  /** Host only: give an Away Player's Seat to a Bot; the Player stays on as a Spectator. */
+  z.object({ v, type: z.literal('replaceWithBot'), memberId }),
+  /** A Spectator takes over the Seat a Bot occupies. */
+  z.object({ v, type: z.literal('takeSeat'), seat }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -75,18 +93,22 @@ export type RoomPhase = 'lobby' | 'game' | 'results';
 export interface MemberView {
   id: string;
   nickname: string;
+  /** Always false for a Bot, which has no connection. */
   connected: boolean;
   seated: boolean;
+  bot: boolean;
 }
 
 export interface GameSeatView {
   memberId: string;
   nickname: string;
+  bot: boolean;
 }
 
 export interface SessionTotal {
   memberId: string;
   nickname: string;
+  bot: boolean;
   games: number;
   wins: number;
   bullHeads: number;
@@ -102,11 +124,15 @@ export interface RoomView {
   members: MemberView[];
   /** Member ids seated for the next Game, in Seat order. */
   seats: string[];
-  settings: { endScore: number };
+  settings: { endScore: number; pickTimer: PickTimer };
   /** The current or last Game; Seat i of the Game is `gameSeats[i]`. */
   game: GameView | null;
   gameSeats: GameSeatView[];
   totals: SessionTotal[];
+  /** When the Pick Timer runs out for the current decision (epoch ms), or null if it isn't running. */
+  deadline: number | null;
+  /** The server's clock when this snapshot was made, so clients can correct for their own. */
+  now: number;
 }
 
 export const ERROR_CODES = [
@@ -124,6 +150,11 @@ export const ERROR_CODES = [
   'card_not_in_hand',
   'not_your_choice',
   'invalid_row',
+  'unknown_member',
+  'not_a_bot',
+  'not_away',
+  'invalid_target',
+  'kicked',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -180,21 +211,30 @@ const roomViewSchema: z.ZodType<RoomView> = z.object({
   hostId: z.string(),
   you: z.string(),
   members: z.array(
-    z.object({ id: z.string(), nickname: z.string(), connected: z.boolean(), seated: z.boolean() }),
+    z.object({
+      id: z.string(),
+      nickname: z.string(),
+      connected: z.boolean(),
+      seated: z.boolean(),
+      bot: z.boolean(),
+    }),
   ),
   seats: z.array(z.string()),
-  settings: z.object({ endScore: z.number().int() }),
+  settings: z.object({ endScore: z.number().int(), pickTimer }),
   game: gameViewSchema.nullable(),
-  gameSeats: z.array(z.object({ memberId: z.string(), nickname: z.string() })),
+  gameSeats: z.array(z.object({ memberId: z.string(), nickname: z.string(), bot: z.boolean() })),
   totals: z.array(
     z.object({
       memberId: z.string(),
       nickname: z.string(),
+      bot: z.boolean(),
       games: z.number().int(),
       wins: z.number().int(),
       bullHeads: z.number().int(),
     }),
   ),
+  deadline: z.number().nullable(),
+  now: z.number(),
 });
 
 export const serverMessageSchema = z.discriminatedUnion('type', [

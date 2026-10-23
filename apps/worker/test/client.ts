@@ -8,8 +8,14 @@ import {
 
 type StateMessage = Extract<ServerMessage, { type: 'state' }>;
 
+let rooms = 0;
+
+/** Creates a Room, from a fresh client IP each time so tests stay under the rate limit. */
 export async function createRoom(): Promise<string> {
-  const response = await exports.default.fetch('http://test/api/rooms', { method: 'POST' });
+  const response = await exports.default.fetch('http://test/api/rooms', {
+    method: 'POST',
+    headers: { 'CF-Connecting-IP': `10.0.${Math.floor(++rooms / 250)}.${rooms % 250}` },
+  });
   if (response.status !== 201) throw new Error(`create failed: ${response.status}`);
   return ((await response.json()) as { code: string }).code;
 }
@@ -47,6 +53,13 @@ export class Client {
     client.send({ type: 'hello', nickname });
     await client.state();
     return client;
+  }
+
+  /** Resolves once every client's snapshot shows all of them, so no join broadcast is still due. */
+  static async synced(...clients: Client[]): Promise<void> {
+    for (const client of clients) {
+      while (client.latest().members.length < clients.length) await client.state();
+    }
   }
 
   send(intent: ClientIntent | Record<string, unknown>): void {
