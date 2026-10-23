@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # PR branches run via `pull_request` only, so each commit gets one run, not two.
   push:
+    branches: [main]
   pull_request:
     # `closed` deletes the PR's preview.
     types: [opened, synchronize, reopened, closed]
