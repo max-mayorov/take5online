@@ -86,7 +86,15 @@ export function revealFrames(before: GameView, events: readonly GameEvent[]): Fr
     const event = events[i]!;
     switch (event.type) {
       case 'revealed':
-        push({ tray: event.cards.map((p) => ({ ...p })), faceDown: true }, TIMING.faceDown);
+        // `before` may predate the viewer's own Pick, which now leaves their Hand for the tray.
+        push(
+          {
+            hand: table.hand.filter((card) => !event.cards.some((p) => p.card === card)),
+            tray: event.cards.map((p) => ({ ...p })),
+            faceDown: true,
+          },
+          TIMING.faceDown,
+        );
         push({ faceDown: false }, TIMING.flip, 'flip');
         break;
       case 'rowTaken': {

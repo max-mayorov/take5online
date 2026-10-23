@@ -75,11 +75,14 @@ describe('revealFrames', () => {
     let checked = 0;
     for (const seed of [1, 2, 3, 4, 5]) {
       for (const { before, after, events } of steps(seed, 2 + (seed % 9))) {
-        const frames = revealFrames(viewFor(before, 0), events);
+        // Seen by whoever acted, so the viewer's own Pick is often the one that completes a Turn.
+        const picked = events.find((e) => e.type === 'picked');
+        const viewer = picked?.type === 'picked' ? picked.seat : 0;
+        const frames = revealFrames(viewFor(before, viewer), events);
         expect(frames.length > 0).toBe(isAnimated(events));
         if (frames.length === 0) continue;
         const last = frames[frames.length - 1]!.table;
-        const live = tableFrom(viewFor(after, 0));
+        const live = tableFrom(viewFor(after, viewer));
         expect(last.scores).toEqual(live.scores);
         if (events.some((e) => e.type === 'roundEnded')) {
           expect(last.roundEnded).toBe(before.round);
@@ -87,7 +90,8 @@ describe('revealFrames', () => {
           // The next Round's Hand waits until the Reveal has played.
           expect(frames.every((f) => f.table.round === before.round)).toBe(true);
           expect(frames.every((f) => f.table.turn === before.turn)).toBe(true);
-          expect(last.hand).toEqual(viewFor(before, 0).hand);
+          // Every Card of the Round is now on the Board, the last Pick included.
+          expect(frames.every((f) => f.table.hand.length === 0)).toBe(true);
           if (after.phase !== 'gameOver') expect(live.round).not.toBe(before.round);
         } else {
           expect(last.board).toEqual(live.board);
