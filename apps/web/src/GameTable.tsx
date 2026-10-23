@@ -83,24 +83,22 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
       />
 
       <div className="status">
-        {table.tray.length > 0 && (
-          <RevealTray
-            tray={table.tray}
-            faceDown={table.faceDown}
-            choosing={animating ? null : table.choosing}
-            name={name}
-          />
-        )}
+        <RevealTray
+          tray={table.tray}
+          seats={game.config.seatCount}
+          you={!animating && game.phase === 'picking' ? mySeat : null}
+          choosing={animating ? null : table.choosing}
+          name={name}
+        />
         <p className={`prompt ${iMustChoose ? 'urgent' : ''}`} aria-live="polite">
           {prompt}
         </p>
-        {!animating && <Countdown deadline={view.deadline} now={view.now} />}
+        <Countdown deadline={view.deadline} now={view.now} hidden={animating} />
       </div>
 
       {mySeat !== null && game.phase !== 'gameOver' && (
         <Hand
           hand={nextDealt ? table.hand : game.hand}
-          pick={nextDealt ? null : game.pick}
           enabled={!animating && game.phase === 'picking'}
           onPick={(card) => send({ type: 'pick', card })}
         />

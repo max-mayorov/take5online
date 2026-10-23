@@ -13,7 +13,7 @@ export interface Update {
 /** Beyond this many queued steps, older Reveals are dropped rather than replayed. */
 const MAX_QUEUE = 80;
 
-function reducedMotion(): boolean {
+export function reducedMotion(): boolean {
   return matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 

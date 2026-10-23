@@ -840,38 +840,61 @@ button:disabled {
   gap: 0.4rem;
   justify-content: center;
   min-height: 3rem;
+  container-type: inline-size;
 }
 
 .prompt {
   font-weight: 600;
   margin: 0;
   text-align: center;
+  /* Room for two lines whatever the prompt says, so the Hand below stays put. */
+  min-height: calc(2 * 1.35em);
 }
 
 .prompt.urgent {
   color: var(--warn);
 }
 
+/* The tray keeps room for every Seat's Pick, so the Hand below never moves. */
 .tray {
+  --tray-card-max: 3.4rem;
+  --tray-gap: 0.4rem;
+  --tray-card: min(
+    var(--tray-card-max),
+    (100cqi - (var(--columns) - 1) * var(--tray-gap)) / var(--columns)
+  );
+  --tray-name: 0.9rem;
+  position: relative;
   list-style: none;
-  margin: 0;
+  margin: 0 auto;
   padding: 0;
+  width: 100%;
+  max-width: calc(var(--columns) * var(--tray-card) + (var(--columns) - 1) * var(--tray-gap) + 1px);
+  min-height: calc(
+    var(--rows) * (var(--tray-card) * 84 / 60 + var(--tray-name)) + (var(--rows) - 1) *
+      var(--tray-gap)
+  );
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.4rem;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: var(--tray-gap);
 }
 
 .tray li {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 3.4rem;
+  flex: none;
+  width: var(--tray-card);
   font-size: 0.75rem;
 }
 
 .tray-name {
   max-width: 100%;
+  height: var(--tray-name);
+  line-height: var(--tray-name);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -879,6 +902,11 @@ button:disabled {
 
 .tray li.low-card .flip {
   outline: 3px solid var(--warn);
+  outline-offset: 1px;
+}
+
+.tray li.mine .flip {
+  outline: 3px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -996,6 +1024,9 @@ button:disabled {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .tray li {
+    animation: drop-in 0.35s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+  }
   .card.just-placed {
     animation: drop-in 0.35s cubic-bezier(0.2, 0.8, 0.3, 1.2);
   }
@@ -1061,8 +1092,8 @@ button:disabled {
     width: 5.5rem;
   }
 
-  .tray li {
-    width: 4.2rem;
+  .tray {
+    --tray-card-max: 4.2rem;
   }
 
   .lobby-layout {
@@ -1200,6 +1231,10 @@ select:focus-visible {
   background: var(--surface);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.countdown.hidden {
+  visibility: hidden;
 }
 
 .countdown.urgent {
