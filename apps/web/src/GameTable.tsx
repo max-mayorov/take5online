@@ -45,7 +45,7 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
   return (
     <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
       <div className="table-top">
-        <span className="muted">{t.round(game.round, game.turn)}</span>
+        <span className="muted">{t.round(table.round, table.turn)}</span>
         {isHost && (
           <label className="row animate-toggle muted">
             <input

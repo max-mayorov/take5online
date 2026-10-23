@@ -4,8 +4,9 @@ export type Sound = 'flip' | 'place' | 'take';
 
 /** What the table shows at one moment: either the live snapshot or a step of a Reveal. */
 export interface TableState {
-  /** The Round on the table, and the viewer's Hand in it, without their Pick. */
+  /** The Round and Turn on the table, and the viewer's Hand in it, without their Pick. */
   round: number;
+  turn: number;
   hand: Card[];
   board: Card[][];
   scores: number[];
@@ -45,6 +46,7 @@ export const TIMING = {
 export function tableFrom(game: GameView): TableState {
   return {
     round: game.round,
+    turn: game.turn,
     hand: [...game.hand],
     board: game.board.map((row) => [...row]),
     scores: game.seats.map((s) => s.score),

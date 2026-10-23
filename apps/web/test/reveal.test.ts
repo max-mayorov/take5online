@@ -86,6 +86,7 @@ describe('revealFrames', () => {
           expect(last.tray).toEqual([]);
           // The next Round's Hand waits until the Reveal has played.
           expect(frames.every((f) => f.table.round === before.round)).toBe(true);
+          expect(frames.every((f) => f.table.turn === before.turn)).toBe(true);
           expect(last.hand).toEqual(viewFor(before, 0).hand);
           if (after.phase !== 'gameOver') expect(live.round).not.toBe(before.round);
         } else {
