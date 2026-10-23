@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "take5.mayorov.dev", "custom_domain": true }],
+  // Gives PR previews a workers.dev URL. A Worker-level setting, so it only applies once deployed.
+  "preview_urls": true,
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
@@ -23,4 +25,19 @@
     },
   ],
   "observability": { "enabled": true },
+  // PR previews (`wrangler preview`) don't inherit bindings. Each gets its own Durable Object storage.
+  "previews": {
+    "durable_objects": {
+      "bindings": [{ "name": "ROOMS", "class_name": "RoomObject" }],
+    },
+    "ratelimits": [
+      {
+        // A separate namespace, so testing a preview doesn't use up production's budget.
+        "name": "CREATE_ROOM_LIMIT",
+        "namespace_id": "1002",
+        "simple": { "limit": 10, "period": 60 },
+      },
+    ],
+    "observability": { "enabled": true },
+  },
 }

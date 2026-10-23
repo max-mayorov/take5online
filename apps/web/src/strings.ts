@@ -188,5 +188,5 @@ export const tPrivacy = {
   statsOn: 'Send anonymous statistics and error reports',
   statsBrowserOff:
     'Off: your browser asks sites not to track you (Global Privacy Control or Do Not Track).',
-  statsLocalOff: 'Off on local development servers.',
+  statsNotLiveOff: 'Off on development servers and previews.',
 } as const;
