@@ -81,6 +81,11 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 - All messages are JSON validated by Zod on both ends. Every message carries the protocol version;
   on mismatch the server tells the client to reload (covers tabs left open across a deploy).
 - The engine's RNG is seeded per Round; the seed is stored so any Game can be replayed in tests.
+- **Reactions** are the one message that is not a snapshot: a member sends `react {emoji}` with an emoji
+  from a fixed set (`REACTIONS` in the protocol: 👍 😂 😱 🐮 🎉 😭), and the Room relays
+  `reaction {memberId, emoji}` to every identified connection, Spectators included. Reactions are never
+  stored. The Room keeps a per-member rate limit in memory (5 per 10 s); extras are dropped silently, and
+  the limit resets if the Durable Object hibernates, which is fine for its purpose.
 
 ## Identity and joining
 
@@ -124,9 +129,22 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   Bull-head tier (1 / 2 / 3 / 5 / 7). Tier is also readable from the icon count, so colour is never the only cue.
 - **Reveal**: Picks flip together, then Cards are Placed one by one in ascending order (~600 ms each), Takes
   animated into the Penalty Pile. A "skip" control jumps to the end state.
-- **Emoji reactions**: a small fixed set, shown floating over the sender's Seat; rate-limited.
+  - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
+    (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
+    unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in
+    order; snapshots that arrive meanwhile queue their own frames. Once they have played, or on skip, the
+    table shows the live snapshot again. The Hand is always live, so Players can Pick for the next Turn
+    while a Reveal is still showing; Row choices wait for the animation to finish.
+  - A Low Card pause is the live snapshot itself: the waiting Cards stay in the tray, the Low Card and the
+    choosing Seat are marked, and the Rows pulse for the chooser.
+  - `prefers-reduced-motion` (and a hidden tab) skips the frames and plays at most one sound.
+- **Emoji reactions**: a small fixed set, shown floating over the sender's Seat (or their name in the
+  Lobby or the Spectator list) for 2.5 s; rate-limited.
 - Light and dark theme following the system setting.
-- Sound effects for Reveal and Take, on by default, mute toggle remembered in `localStorage`.
+- Sound effects for Reveal and Take, on by default, mute toggle remembered in `localStorage`. All sounds
+  are synthesised with the Web Audio API (no audio files): a swish for the flip, a tock per Placement and
+  a low "moo" for a Take. Browsers only allow audio after a gesture, so the audio context starts on the
+  first tap or key press.
 - All UI text in a single strings module (English).
 
 ## Abuse limits
