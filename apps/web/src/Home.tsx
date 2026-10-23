@@ -2,9 +2,15 @@ import { parseRoomCode, type CreateRoomResponse } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
 import { track } from './analytics';
 import { CardFace } from './Card';
-import { t } from './strings';
+import { t, tPrivacy } from './strings';
 
-export function Home({ onEnter }: { onEnter: (code: string) => void }) {
+export function Home({
+  onEnter,
+  onPrivacy,
+}: {
+  onEnter: (code: string) => void;
+  onPrivacy: () => void;
+}) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -63,6 +69,16 @@ export function Home({ onEnter }: { onEnter: (code: string) => void }) {
           {error}
         </p>
       )}
+      <a
+        className="footer-link"
+        href="/privacy"
+        onClick={(e) => {
+          e.preventDefault();
+          onPrivacy();
+        }}
+      >
+        {tPrivacy.link}
+      </a>
     </main>
   );
 }

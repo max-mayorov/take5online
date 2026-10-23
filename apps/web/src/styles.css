@@ -1187,3 +1187,38 @@ select:focus-visible {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* ---------------------------------------------------------------- Privacy */
+
+.privacy {
+  padding-top: 1.5rem;
+}
+
+.privacy p,
+.privacy section {
+  margin: 0;
+}
+
+.privacy h2 {
+  margin-top: 0.5rem;
+}
+
+.privacy button {
+  align-self: flex-start;
+}
+
+.privacy a {
+  color: var(--accent);
+}
+
+.privacy input[type='checkbox'] {
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  flex: none;
+}
+
+.footer-link {
+  font-size: 0.85rem;
+  color: var(--muted);
+}

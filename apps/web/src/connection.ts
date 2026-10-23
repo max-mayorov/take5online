@@ -218,8 +218,7 @@ export function useRoom(code: string) {
     const noteState = (room: RoomView) => {
       if (room.you !== memberId) {
         memberId = room.you;
-        const nickname = room.members.find((m) => m.id === room.you)?.nickname;
-        setRoomContext({ roomCode: code, memberId, ...(nickname ? { nickname } : {}) });
+        setRoomContext({ roomCode: code, memberId });
       }
       if (phase !== null && room.phase !== phase) {
         const props = { players: room.seats.length, is_host: room.hostId === room.you };

@@ -2,10 +2,11 @@ import { parseRoomCode } from '@take5/protocol';
 import { useEffect, useState } from 'react';
 import { Sprites } from './Card';
 import { Home } from './Home';
+import { Privacy } from './Privacy';
 import { RoomPage } from './RoomPage';
 import { unlockAudio } from './sound';
 
-/** Two routes: `/` and `/ABCD`. */
+/** Three routes: `/`, `/ABCD` and `/privacy`. */
 export function App() {
   const [path, setPath] = useState(location.pathname);
 
@@ -32,8 +33,10 @@ export function App() {
       <Sprites />
       {code ? (
         <RoomPage key={code} code={code} onExit={() => navigate('/')} />
+      ) : path === '/privacy' ? (
+        <Privacy onHome={() => navigate('/')} />
       ) : (
-        <Home onEnter={(room) => navigate(`/${room}`)} />
+        <Home onEnter={(room) => navigate(`/${room}`)} onPrivacy={() => navigate('/privacy')} />
       )}
     </>
   );

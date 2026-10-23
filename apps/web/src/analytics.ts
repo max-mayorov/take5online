@@ -4,15 +4,39 @@ import type { PostHog } from 'posthog-js';
 const POSTHOG_TOKEN = 'phc_BgAoPDRJwfq4ovH9BUo8EqWiGu4QYKNLabHUWg3ZTaYf';
 /** The Worker forwards this path to PostHog (EU), so ad blockers don't drop the events. */
 const POSTHOG_PATH = '/relay';
+/** Set when someone turns analytics off on the privacy page; storing their objection is strictly necessary. */
+const OPT_OUT_KEY = 'take5:no-analytics';
 
 /** Local servers (dev and e2e) send nothing, so tests don't pollute the data. */
-const enabled = !['localhost', '127.0.0.1'].includes(location.hostname);
+export const localServer = ['localhost', '127.0.0.1'].includes(location.hostname);
+const enabled = !localServer;
 
 let posthog: Promise<PostHog> | null = null;
+/** This page's choice, which also covers browsers that refuse storage. */
+let optOutChoice: boolean | null = null;
+
+/** Global Privacy Control or Do Not Track: the browser objects on its owner's behalf. */
+export function browserObjects(): boolean {
+  const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
+  return nav.globalPrivacyControl === true || nav.doNotTrack === '1';
+}
+
+function optedOut(): boolean {
+  if (optOutChoice !== null) return optOutChoice;
+  try {
+    return localStorage.getItem(OPT_OUT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function analyticsOn(): boolean {
+  return enabled && !browserObjects() && !optedOut();
+}
 
 /** Loads PostHog after the app (it's as big as the rest of the bundle). Calls made before then wait. */
 export function initAnalytics(): void {
-  if (!enabled || posthog) return;
+  if (!analyticsOn() || posthog) return;
   posthog = import('posthog-js').then(({ default: ph }) => {
     ph.init(POSTHOG_TOKEN, {
       api_host: POSTHOG_PATH,
@@ -23,7 +47,12 @@ export function initAnalytics(): void {
       cookieless_mode: 'always',
       person_profiles: 'never',
       disable_session_recording: true,
+      // Buttons and labels show Nicknames; autocapture records which element was clicked, not its text.
+      mask_all_text: true,
+      mask_all_element_attributes: true,
       capture_exceptions: true,
+      // Opting out must stop events at once; cookieless mode ignores PostHog's own opt-out.
+      before_send: (event) => (analyticsOn() ? event : null),
     });
     return ph;
   });
@@ -31,7 +60,21 @@ export function initAnalytics(): void {
   posthog.catch(() => {});
 }
 
-const withPostHog = (use: (ph: PostHog) => void) => void posthog?.then(use, () => {});
+/** Turns analytics off or back on for this browser, from now on. */
+export function setAnalyticsOn(on: boolean): void {
+  optOutChoice = !on;
+  try {
+    if (on) localStorage.removeItem(OPT_OUT_KEY);
+    else localStorage.setItem(OPT_OUT_KEY, '1');
+  } catch {
+    // Without storage the choice lasts until the page is reloaded.
+  }
+  if (on) initAnalytics();
+}
+
+const withPostHog = (use: (ph: PostHog) => void) => {
+  if (analyticsOn()) void posthog?.then(use, () => {});
+};
 
 /** Records a custom event. */
 export function track(event: string, properties?: Record<string, unknown>): void {
@@ -43,23 +86,18 @@ export function reportError(error: unknown, properties?: Record<string, unknown>
   withPostHog((ph) => ph.captureException(error, properties));
 }
 
-/** Tags every following event with the Room and Member. */
-export function setRoomContext(context: {
-  roomCode: string;
-  memberId?: string;
-  nickname?: string;
-}): void {
+/** Tags every following event with the Room and the Member's random id (never the Nickname). */
+export function setRoomContext(context: { roomCode: string; memberId?: string }): void {
   withPostHog((ph) =>
     ph.register({
       room_code: context.roomCode,
       ...(context.memberId ? { member_id: context.memberId } : {}),
-      ...(context.nickname ? { nickname: context.nickname } : {}),
     }),
   );
 }
 
 export function clearRoomContext(): void {
   withPostHog((ph) => {
-    for (const key of ['room_code', 'member_id', 'nickname']) ph.unregister(key);
+    for (const key of ['room_code', 'member_id']) ph.unregister(key);
   });
 }

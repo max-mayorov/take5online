@@ -8,7 +8,7 @@ import { HostControls } from './HostControls';
 import { Floaters, ReactionPicker } from './Reactions';
 import { SeatActions } from './SeatActions';
 import { setMuted, useMuted } from './sound';
-import { t, tControls } from './strings';
+import { t, tControls, tPrivacy } from './strings';
 import { useReveal } from './useReveal';
 
 type Room = ReturnType<typeof useRoom>;
@@ -119,6 +119,10 @@ function NicknameForm({ onSubmit }: { onSubmit: (nickname: string) => void }) {
           {t.enterRoom}
         </button>
       </div>
+      {/* A new tab, so reading it doesn't leave the room. */}
+      <a className="footer-link" href="/privacy" target="_blank" rel="noopener">
+        {tPrivacy.link}
+      </a>
     </form>
   );
 }
