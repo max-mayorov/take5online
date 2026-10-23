@@ -56,10 +56,11 @@ behind the bigger decisions lives in [adr/](./adr/).
   Hibernation API so idle Rooms cost nothing, and uses alarms for the Pick Timer, the Grace Period and expiry.
   See [ADR-0001](./adr/0001-one-durable-object-per-room.md).
 - **No database.** Nothing outlives a Room.
-- **Analytics** (PostHog, EU cloud): the app sends pageviews, autocaptured clicks, exceptions, session
-  replays and a few game/connection events (`room_joined`, `game_started`, `ws_closed`, `server_error`…),
+- **Analytics** (PostHog, EU cloud, cookieless): the app sends pageviews, autocaptured clicks,
+  exceptions and a few game/connection events (`room_joined`, `game_started`, `ws_closed`, `server_error`…),
   tagged with the Room Code, Member id and Nickname. They go through the Worker at `/relay/*` so ad
-  blockers don't drop them. Off on `localhost`. See [ADR-0009](./adr/0009-posthog-analytics.md).
+  blockers don't drop them. Nothing is stored in the browser for analytics, so there is no consent
+  banner; the only browser storage is the seat token and the mute choice, both strictly necessary. Off on `localhost`. See [ADR-0009](./adr/0009-posthog-analytics.md).
 - Free plan only; custom domain `take5.mayorov.dev` (zone already on Cloudflare) configured as a Worker custom domain.
 
 ### Repository layout (TypeScript monorepo, pnpm workspaces)

@@ -18,6 +18,11 @@ export function initAnalytics(): void {
       api_host: POSTHOG_PATH,
       ui_host: 'https://eu.posthog.com',
       defaults: '2026-08-30',
+      // Nothing is stored in the browser, so no consent banner is needed: PostHog counts visitors with
+      // a daily-salted hash on its servers. Session replay needs storage, so it stays off.
+      cookieless_mode: 'always',
+      person_profiles: 'never',
+      disable_session_recording: true,
       capture_exceptions: true,
     });
     return ph;
@@ -38,7 +43,7 @@ export function reportError(error: unknown, properties?: Record<string, unknown>
   withPostHog((ph) => ph.captureException(error, properties));
 }
 
-/** Tags every following event (and the session replay) with the Room and Member. */
+/** Tags every following event with the Room and Member. */
 export function setRoomContext(context: {
   roomCode: string;
   memberId?: string;
