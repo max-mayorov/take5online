@@ -674,8 +674,24 @@ button:disabled {
 }
 
 .away-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.3rem;
   background: var(--muted);
   color: var(--surface);
+}
+
+/* Phone chips are too narrow for the word next to a Nickname: show only the icon there. */
+@media (max-width: 899px) {
+  .away-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .seat-name {

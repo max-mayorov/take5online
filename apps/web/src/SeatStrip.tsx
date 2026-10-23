@@ -52,7 +52,10 @@ export function SeatStrip({ view, game, table, reactions, send }: Props) {
             </span>
             <span className="seat-status">
               {away ? (
-                <span className="badge away-badge">{t.away}</span>
+                <span className="badge away-badge">
+                  <span aria-hidden="true">💤</span>
+                  <span className="away-text">{t.away}</span>
+                </span>
               ) : choosing ? (
                 <span className="choosing-mark">
                   <span aria-hidden="true">⏳</span>
