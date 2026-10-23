@@ -6,8 +6,8 @@ test('the privacy notice is one tap from the home page and the nickname form', a
   await expect(page).toHaveURL(/\/privacy$/);
   await expect(page.getByRole('heading', { name: 'Privacy', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: 'max.mayorov@live.com' }).first()).toBeVisible();
-  // The e2e server is local, where analytics never load.
-  await expect(page.getByText('Off on local development servers.')).toBeVisible();
+  // The e2e server isn't the live site, so analytics never load.
+  await expect(page.getByText('Off on development servers and previews.')).toBeVisible();
 
   await page.getByRole('button', { name: 'Back to start' }).click();
   await page.getByRole('button', { name: 'Create a room' }).click();
