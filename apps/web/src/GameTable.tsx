@@ -4,6 +4,7 @@ import { Board } from './Board';
 import type { ReactionShown } from './connection';
 import { Countdown } from './Countdown';
 import { Hand } from './Hand';
+import { PlaceFlight } from './PlaceFlight';
 import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
 import { tableFrom, type Frame } from './reveal';
@@ -98,6 +99,7 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
       )}
 
       <TakeFlight flight={table.flight} />
+      <PlaceFlight table={table} enabled={view.settings.animateCards} />
     </section>
   );
 }

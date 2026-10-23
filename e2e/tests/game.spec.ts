@@ -84,15 +84,17 @@ test('a Reveal animates and can be skipped', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
   await max.getByRole('button', { name: 'Start game' }).click();
 
-  await pickFirst(max);
+  // The highest Cards, so the Reveal Places at least one rather than waiting on a Low Card.
+  await pickFirst(max, 'last');
   await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
-  await pickFirst(sam);
+  await pickFirst(sam, 'last');
 
-  // Both Picks appear in the tray, then get Placed one by one; skipping jumps to the end.
+  // Both Picks appear in the tray, then fly to their Rows one by one; skipping jumps to the end.
   await Promise.all(
     [max, sam].map(async (page) => {
       await expect(page.getByText('Revealing…')).toBeVisible();
       await expect(page.locator('.tray .card')).not.toHaveCount(0);
+      await expect(page.locator('.flight .flyer')).toBeAttached();
     }),
   );
   await max.getByRole('button', { name: /Skip/ }).click();
@@ -114,6 +116,47 @@ test('a Reveal animates and can be skipped', async ({ browser }) => {
   }
 });
 
+test('the host can turn card animation off for the whole room', async ({ browser }) => {
+  const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
+  const animate = max.getByLabel('Animate cards flying to their rows');
+  await expect(animate).toBeChecked();
+  await animate.click();
+  await expect(animate).not.toBeChecked();
+  await expect(sam.getByText('Card animation is off.')).toBeVisible();
+  await max.getByRole('button', { name: 'Start game' }).click();
+
+  // Note any Card that flies while the first Turn is Revealed.
+  const watchFlights = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as { flew: boolean };
+      w.flew = false;
+      new MutationObserver(() => {
+        w.flew ||= document.querySelector('.flight .flyer') !== null;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+  await Promise.all([max, sam].map(watchFlights));
+
+  await pickFirst(max, 'last');
+  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
+  await pickFirst(sam, 'last');
+
+  // The Reveal still plays, but Cards appear in their slots without flying there.
+  await Promise.all(
+    [max, sam].map(async (page) => {
+      await expect(page.getByText('Revealing…')).toBeVisible();
+      await expect(page.getByRole('button', { name: /Skip/ })).toHaveCount(0, { timeout: 10_000 });
+      expect(await page.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(false);
+    }),
+  );
+});
+
+test('the rules are a click away on Wikipedia, here and in every room', async ({ page }) => {
+  await page.goto('/');
+  const rules = page.getByRole('link', { name: /Rules of 6 nimmt!/ });
+  await expect(rules).toHaveAttribute('href', 'https://en.wikipedia.org/wiki/6_nimmt!');
+  await expect(rules).toHaveAttribute('target', '_blank');
+});
+
 test('reactions float over the sender for everyone', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
   await max.getByRole('button', { name: 'React', exact: true }).click();
@@ -130,6 +173,7 @@ test('a reload keeps your seat and your mute choice', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a room' }).click();
   await enter(page, 'Max');
+  await expect(page.locator('.room-header').getByRole('link', { name: /Rules/ })).toBeVisible();
   await page.getByRole('button', { name: 'Mute sounds' }).click();
   await page.reload();
   await expect(page.getByText('Max (host, you)')).toBeVisible();
@@ -186,11 +230,14 @@ async function enter(page: Page, nickname: string) {
   await expect(page.getByText(`${nickname} (`).first()).toBeVisible();
 }
 
-/** Picks the leftmost Card not already Picked, and waits until the server has taken it. */
-async function pickFirst(page: Page) {
+/**
+ * Picks the leftmost (lowest) Card not already Picked, or the rightmost, and waits until the
+ * server has taken it.
+ */
+async function pickFirst(page: Page, end: 'first' | 'last' = 'first') {
   const turnLabel = page.getByText(/^Round \d+ · Turn/);
   const turn = (await turnLabel.allTextContents()).join();
-  const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)').first();
+  const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)')[end]();
   const card = await button.getAttribute('data-card');
   await button.click();
   // A Picked Card is either raised in the Hand or, once the Turn is Revealed, gone from it,

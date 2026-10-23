@@ -11,13 +11,14 @@ import {
   type GameState,
 } from '@take5/engine';
 import {
+  DEFAULT_ANIMATE_CARDS,
   DEFAULT_END_SCORE,
   DEFAULT_PICK_TIMER,
   MAX_SPECTATORS,
   type ErrorCode,
   type GameSeatView,
-  type PickTimer,
   type RoomPhase,
+  type RoomSettings,
   type RoomView,
   type SessionTotal,
 } from '@take5/protocol';
@@ -52,7 +53,7 @@ export interface RoomData {
   members: Member[];
   /** Member ids seated for the next Game, in Seat order. During a Game, the Game's Seats. */
   seats: string[];
-  settings: { endScore: number; pickTimer: PickTimer };
+  settings: RoomSettings;
   phase: RoomPhase;
   game: GameState | null;
   gameSeats: GameSeatView[];
@@ -75,7 +76,11 @@ export function createRoom(code: string, now: number): RoomData {
     hostId: null,
     members: [],
     seats: [],
-    settings: { endScore: DEFAULT_END_SCORE, pickTimer: DEFAULT_PICK_TIMER },
+    settings: {
+      endScore: DEFAULT_END_SCORE,
+      pickTimer: DEFAULT_PICK_TIMER,
+      animateCards: DEFAULT_ANIMATE_CARDS,
+    },
     phase: 'lobby',
     game: null,
     gameSeats: [],
@@ -89,7 +94,11 @@ export function createRoom(code: string, now: number): RoomData {
 /** Fills in fields that Rooms stored by an older version lack. */
 export function upgradeRoom(stored: RoomData): RoomData {
   const room: RoomData = { ...stored };
-  room.settings = { ...room.settings, pickTimer: room.settings.pickTimer ?? DEFAULT_PICK_TIMER };
+  room.settings = {
+    ...room.settings,
+    pickTimer: room.settings.pickTimer ?? DEFAULT_PICK_TIMER,
+    animateCards: room.settings.animateCards ?? DEFAULT_ANIMATE_CARDS,
+  };
   room.members = room.members.map((m) => ({ ...m, bot: m.bot ?? false }));
   room.gameSeats = room.gameSeats.map((s) => ({ ...s, bot: s.bot ?? false }));
   room.totals = room.totals.map((t) => ({ ...t, bot: t.bot ?? false }));
@@ -157,12 +166,13 @@ export function leave(room: RoomData, memberId: string): RoomResult {
 export function changeSettings(
   room: RoomData,
   memberId: string,
-  settings: { endScore?: number | undefined; pickTimer?: PickTimer | undefined },
+  settings: { [K in keyof RoomSettings]?: RoomSettings[K] | undefined },
 ): RoomResult {
   if (room.hostId !== memberId) return fail('not_host');
   if (room.phase === 'game') return fail('game_in_progress');
   if (settings.endScore !== undefined) room.settings.endScore = settings.endScore;
   if (settings.pickTimer !== undefined) room.settings.pickTimer = settings.pickTimer;
+  if (settings.animateCards !== undefined) room.settings.animateCards = settings.animateCards;
   return ok();
 }
 
