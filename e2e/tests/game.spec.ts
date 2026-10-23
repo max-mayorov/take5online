@@ -36,6 +36,32 @@ test('two friends play a whole game', async ({ browser }) => {
   await expect(max.getByRole('button', { name: 'Play again' })).toBeVisible();
 });
 
+test('one person plays a whole game against a bot', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+
+  await page.getByRole('button', { name: 'Add a bot' }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await expect(page.getByText('Players (2/10)')).toBeVisible();
+  await expect(page.getByLabel('Pick timer')).toHaveValue('60');
+  const endScore = page.getByLabel('Game ends at');
+  await endScore.fill('10');
+  await endScore.blur();
+  await page.getByRole('button', { name: 'Start game' }).click();
+  await expect(page.locator('.hand .card-button')).toHaveCount(10);
+  await expect(page.getByRole('timer')).toContainText(/⏱ \d+s/);
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+
+  // The Bot has always Picked already, so each of Max's Picks Reveals the Turn.
+  for (let steps = 0; !(await page.getByText('Game over').isVisible()); steps++) {
+    expect(steps).toBeLessThan(400);
+    await act(page);
+  }
+  await expect(page.locator('table')).toContainText('Bot 1');
+  await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+});
+
 test('a reload keeps your seat', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a room' }).click();
@@ -59,16 +85,25 @@ async function act(page: Page) {
   const row = page.locator('.board-row.choosable').first();
   if (await row.isVisible()) {
     await row.click();
+    // Wait for the choice to land, so the next call can't click a Row that is about to go stale.
+    await expect(page.locator('.board-row.choosable')).toHaveCount(0);
     return;
   }
   const promptLocator = page.locator('.prompt');
   if ((await promptLocator.count()) === 0) return; // The Game is over.
   const prompt = await promptLocator.textContent();
   if (prompt?.startsWith('Pick a card')) {
+    const turnLabel = page.getByText(/^Round \d+ · Turn/);
+    const turn = (await turnLabel.allTextContents()).join();
     const button = page.locator('.hand .card-button:not(:disabled)').first();
     const card = await button.locator('.card').getAttribute('data-card');
     await button.click();
-    // Picked Cards leave the Hand, whether or not the Turn was Revealed right away.
-    await expect(page.locator(`.hand .card-button .card[data-card="${card}"]`)).toHaveCount(0);
+    // Picked Cards leave the Hand, unless the Turn was Revealed at once and a new Round dealt
+    // the same Card again; either way the Pick has landed.
+    const inHand = page.locator(`.hand .card-button .card[data-card="${card}"]`);
+    await expect(async () => {
+      const moved = (await turnLabel.allTextContents()).join() !== turn;
+      expect(moved || (await inHand.count()) === 0).toBe(true);
+    }).toPass({ timeout: 5000 });
   }
 }

@@ -8,7 +8,8 @@ import {
 } from '@take5/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type Status = 'connecting' | 'needNickname' | 'joined' | 'notFound' | 'reload' | 'left';
+export type Status =
+  'connecting' | 'needNickname' | 'joined' | 'notFound' | 'reload' | 'left' | 'kicked';
 
 export interface RoomConnection {
   status: Status;
@@ -129,6 +130,10 @@ export function useRoom(code: string) {
               finished.current = true;
               writeToken(code, null);
               setState((s) => ({ ...s, status: 'notFound' }));
+            } else if (message.code === 'kicked') {
+              finished.current = true;
+              writeToken(code, null);
+              setState((s) => ({ ...s, status: 'kicked' }));
             } else if (message.code === 'nickname_required') {
               writeToken(code, null);
               setState((s) => ({ ...s, status: 'needNickname', error: null }));

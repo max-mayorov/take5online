@@ -3,17 +3,20 @@ import { MAX_END_SCORE, MIN_END_SCORE, type RoomView } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
 import { useRoom } from './connection';
 import { GameTable } from './GameTable';
-import { t } from './strings';
+import { HostControls } from './HostControls';
+import { GameSeats, SeatActions } from './SeatActions';
+import { t, tControls } from './strings';
 
 type Room = ReturnType<typeof useRoom>;
 
 export function RoomPage({ code, onExit }: { code: string; onExit: () => void }) {
   const room = useRoom(code);
 
-  if (room.status === 'notFound' || room.status === 'left') {
+  if (room.status === 'notFound' || room.status === 'left' || room.status === 'kicked') {
     return (
       <main className="center">
         {room.status === 'notFound' && <p>{t.roomNotFound}</p>}
+        {room.status === 'kicked' && <p>{tControls.kicked}</p>}
         <button onClick={onExit}>{t.backHome}</button>
       </main>
     );
@@ -94,7 +97,8 @@ function Joined({ room, view }: { room: Room; view: RoomView }) {
       )}
       {view.phase === 'results' && <Results view={view} />}
       {view.phase !== 'game' && <Lobby room={room} view={view} />}
-      {view.phase === 'game' && <Members view={view} />}
+      {view.phase === 'game' && <GameSeats view={view} send={room.send} onLeave={room.leave} />}
+      {view.phase === 'game' && <Members view={view} send={room.send} />}
       <EventLog events={room.events} view={view} />
     </>
   );
@@ -116,7 +120,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
   return (
     <section className="stack">
       {view.phase === 'lobby' && <h2>{t.lobby}</h2>}
-      <Members view={view} />
+      <Members view={view} send={room.send} />
       <div className="row wrap">
         {seated ? (
           <button onClick={() => room.send({ type: 'stand' })}>{t.stand}</button>
@@ -153,22 +157,25 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
           {t.endScore} {view.settings.endScore}. {t.waitingForHost}
         </p>
       )}
+      <HostControls view={view} send={room.send} />
     </section>
   );
 }
 
-function Members({ view }: { view: RoomView }) {
+function Members({ view, send }: { view: RoomView; send: Room['send'] }) {
   const label = (id: string) => {
     const member = view.members.find((m) => m.id === id)!;
     const tags = [
       id === view.hostId && t.host,
       id === view.you && t.you,
-      !member.connected && t.away,
+      member.bot && tControls.bot,
+      !member.connected && !member.bot && t.away,
     ].filter(Boolean);
     return (
-      <li key={id} className={member.connected ? '' : 'muted'}>
+      <li key={id} className={member.bot ? 'bot' : member.connected ? '' : 'muted'}>
         {member.nickname}
         {tags.length > 0 && <span className="muted"> ({tags.join(', ')})</span>}
+        <SeatActions view={view} memberId={id} send={send} />
       </li>
     );
   };

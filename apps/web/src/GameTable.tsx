@@ -1,5 +1,6 @@
 import { bullHeads, type Card, type GameView } from '@take5/engine';
 import type { ClientIntent, RoomView } from '@take5/protocol';
+import { Countdown } from './Countdown';
 import { t } from './strings';
 
 interface Props {
@@ -63,6 +64,7 @@ export function GameTable({ view, game, send }: Props) {
       )}
 
       <p className="prompt">{prompt}</p>
+      <Countdown deadline={view.deadline} now={view.now} />
 
       {mySeat !== null && (
         <div className="hand" aria-label={t.yourHand}>

@@ -256,3 +256,35 @@ td {
   text-align: left;
   padding: 0.2rem 0.8rem 0.2rem 0;
 }
+
+/* Bots, the Pick Timer and Host controls */
+.seat-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+}
+
+button.small,
+select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.members li.bot {
+  font-style: italic;
+}
+
+.countdown {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown.urgent {
+  color: var(--error);
+  font-weight: 600;
+}

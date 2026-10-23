@@ -79,5 +79,31 @@ export const t = {
     card_not_in_hand: 'That card is not in your hand.',
     not_your_choice: 'Someone else is choosing.',
     invalid_row: 'Pick one of the four rows.',
+    // Bots and Host controls
+    unknown_member: 'That person is no longer in the room.',
+    not_a_bot: 'Only a bot’s seat can be taken over.',
+    not_away: 'They are still here.',
+    invalid_target: 'You can’t do that to them.',
+    kicked: 'The host removed you from this room.',
   },
+} as const;
+
+// ---------------------------------------------------------------------------
+// Bots, the Pick Timer and Host controls
+
+export const tControls = {
+  pickTimer: 'Pick timer',
+  pickTimerOption: (seconds: number) => (seconds === 0 ? 'Off' : `${seconds} seconds`),
+  pickTimerNote: (seconds: number) =>
+    seconds === 0 ? 'No pick timer.' : `${seconds} seconds per pick.`,
+  addBot: 'Add a bot',
+  removeBot: 'Remove',
+  kick: 'Kick',
+  replaceWithBot: 'Let a bot play',
+  takeSeat: 'Take this seat',
+  bot: 'bot',
+  seats: 'Seats',
+  leave: 'Leave room',
+  countdown: (seconds: number) => `⏱ ${seconds}s`,
+  kicked: 'The host removed you from this room.',
 } as const;
