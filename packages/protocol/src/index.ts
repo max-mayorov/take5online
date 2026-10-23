@@ -60,7 +60,10 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('sit') }),
   z.object({ v, type: z.literal('stand') }),
   z.object({ v, type: z.literal('leave') }),
-  /** Host only, outside a Game. Any field may be left out to keep it as it is. */
+  /**
+   * Host only. End Score and Pick Timer only outside a Game; card animation at any time.
+   * Any field may be left out to keep it as it is.
+   */
   z.object({
     v,
     type: z.literal('settings'),

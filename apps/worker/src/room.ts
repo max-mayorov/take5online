@@ -162,14 +162,15 @@ export function leave(room: RoomData, memberId: string): RoomResult {
   return ok();
 }
 
-/** Host only: changes the settings for the next Game. */
+/** Host only: changes the settings for the next Game, and card animation at any time. */
 export function changeSettings(
   room: RoomData,
   memberId: string,
   settings: { [K in keyof RoomSettings]?: RoomSettings[K] | undefined },
 ): RoomResult {
   if (room.hostId !== memberId) return fail('not_host');
-  if (room.phase === 'game') return fail('game_in_progress');
+  const forNextGame = settings.endScore !== undefined || settings.pickTimer !== undefined;
+  if (forNextGame && room.phase === 'game') return fail('game_in_progress');
   if (settings.endScore !== undefined) room.settings.endScore = settings.endScore;
   if (settings.pickTimer !== undefined) room.settings.pickTimer = settings.pickTimer;
   if (settings.animateCards !== undefined) room.settings.animateCards = settings.animateCards;

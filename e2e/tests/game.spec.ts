@@ -116,7 +116,9 @@ test('a Reveal animates and can be skipped', async ({ browser }) => {
   }
 });
 
-test('the host can turn card animation off for the whole room', async ({ browser }) => {
+test('the host can switch card animation for the whole room, even mid-game', async ({
+  browser,
+}) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
   const animate = max.getByLabel('Animate cards flying to their rows');
   await expect(animate).toBeChecked();
@@ -148,6 +150,17 @@ test('the host can turn card animation off for the whole room', async ({ browser
       expect(await page.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(false);
     }),
   );
+
+  // Only the Host can switch it back on mid-Game, and the next Turn's Cards fly for everyone.
+  await expect(sam.getByLabel('Animate cards', { exact: true })).toHaveCount(0);
+  const midGame = max.getByLabel('Animate cards', { exact: true });
+  await expect(midGame).not.toBeChecked();
+  await midGame.click();
+  await expect(midGame).toBeChecked();
+  await pickFirst(max, 'last');
+  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
+  await pickFirst(sam, 'last');
+  await expect(sam.locator('.flight .flyer')).toBeAttached();
 });
 
 test('the rules are a click away on Wikipedia, here and in every room', async ({ page }) => {

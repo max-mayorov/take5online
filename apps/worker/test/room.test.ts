@@ -127,6 +127,22 @@ describe('a Game', () => {
     expect(addBot(room, members[0]!)).toEqual({ ok: false, error: 'game_in_progress' });
   });
 
+  it('lets the Host switch card animation, but nothing else, while running', () => {
+    const { room, members } = roomWith('Max', 'Sam');
+    start(room, members[0]!, 1);
+    expect(changeSettings(room, members[0]!, { animateCards: false })).toMatchObject({ ok: true });
+    expect(room.settings.animateCards).toBe(false);
+    expect(changeSettings(room, members[1]!, { animateCards: true })).toEqual({
+      ok: false,
+      error: 'not_host',
+    });
+    expect(changeSettings(room, members[0]!, { animateCards: true, pickTimer: 30 })).toEqual({
+      ok: false,
+      error: 'game_in_progress',
+    });
+    expect(room.settings).toEqual({ endScore: 66, pickTimer: 0, animateCards: false });
+  });
+
   it('rejects moves from people without a Seat', () => {
     const { room, members } = roomWith('Max', 'Sam');
     start(room, members[0]!, 1);

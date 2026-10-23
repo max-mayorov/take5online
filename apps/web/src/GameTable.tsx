@@ -9,7 +9,7 @@ import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
 import { tableFrom, type Frame } from './reveal';
 import { SeatStrip } from './SeatStrip';
-import { t } from './strings';
+import { t, tControls } from './strings';
 import { TakeFlight } from './TakeFlight';
 
 interface Props {
@@ -28,6 +28,7 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
   const table = frame?.table ?? tableFrom(game);
   const animating = frame !== null;
   const mySeat = game.seat;
+  const isHost = view.hostId === view.you;
   const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
 
   let prompt: string;
@@ -43,6 +44,16 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
     <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
       <div className="table-top">
         <span className="muted">{t.round(game.round, game.turn)}</span>
+        {isHost && (
+          <label className="row animate-toggle muted">
+            <input
+              type="checkbox"
+              checked={view.settings.animateCards}
+              onChange={(e) => send({ type: 'settings', animateCards: e.target.checked })}
+            />
+            {tControls.animateCardsShort}
+          </label>
+        )}
         {animating && (
           <button className="skip" onClick={onSkip}>
             {t.skip} ⏭

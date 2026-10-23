@@ -176,8 +176,8 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   - Each Placed Card flies from the tray to its slot in ~350 ms, the way a Taken Row flies into a Penalty
     Pile (`apps/web/src/PlaceFlight.tsx`): a copy flies over the table while the real Card stays hidden
     until it lands. A Card that Takes a Row flies to the Row's end first, then into its first slot. This
-    is a Room setting (`animateCards`, on by default) that the Host can turn off in the Lobby; with it off,
-    Cards appear in place.
+    is a Room setting (`animateCards`, on by default) that the Host can switch in the Lobby or, unlike the
+    other settings, mid-Game from the table's top bar; with it off, Cards appear in place.
   - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
     (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
     unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in
