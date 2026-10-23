@@ -5,8 +5,11 @@ import {
   messageVersion,
   nicknameSchema,
   PROTOCOL_VERSION,
+  REACTION_LIMIT,
+  REACTION_WINDOW_MS,
   type ClientMessage,
   type ErrorCode,
+  type Reaction,
   type ServerMessage,
 } from '@take5/protocol';
 import {
@@ -38,6 +41,8 @@ interface Attachment {
  */
 export class RoomObject extends DurableObject<Env> {
   private room: RoomData | null = null;
+  /** Recent Reaction times per member, for rate limiting; losing it on hibernation is fine. */
+  private reactionTimes = new Map<string, number[]>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -93,6 +98,7 @@ export class RoomObject extends DurableObject<Env> {
     const { memberId } = ws.deserializeAttachment() as Attachment;
     if (message.type === 'hello') return this.hello(ws, room, message);
     if (!memberId) return sendError(ws, 'nickname_required');
+    if (message.type === 'react') return this.react(memberId, message.emoji);
 
     const result = this.handle(room, memberId, message);
     if (!result.ok) return sendError(ws, result.error);
@@ -143,10 +149,25 @@ export class RoomObject extends DurableObject<Env> {
     this.broadcast([]);
   }
 
+  /** Relays a Reaction to everyone in the Room, silently dropping any over the rate limit. */
+  private react(memberId: string, emoji: Reaction): void {
+    const now = Date.now();
+    const recent = (this.reactionTimes.get(memberId) ?? []).filter(
+      (time) => now - time < REACTION_WINDOW_MS,
+    );
+    if (recent.length >= REACTION_LIMIT) return;
+    this.reactionTimes.set(memberId, [...recent, now]);
+    for (const ws of this.ctx.getWebSockets()) {
+      if ((ws.deserializeAttachment() as Attachment).memberId) {
+        send(ws, { v: PROTOCOL_VERSION, type: 'reaction', memberId, emoji });
+      }
+    }
+  }
+
   private handle(
     room: RoomData,
     memberId: string,
-    message: Exclude<ClientMessage, { type: 'hello' }>,
+    message: Exclude<ClientMessage, { type: 'hello' | 'react' }>,
   ): RoomResult {
     switch (message.type) {
       case 'sit':

@@ -2,7 +2,7 @@ import { DECK_SIZE, MAX_SEATS, ROW_COUNT, type GameEvent, type GameView } from '
 import { z } from 'zod';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 4;
@@ -11,6 +11,13 @@ export const MAX_SPECTATORS = 20;
 export const DEFAULT_END_SCORE = 66;
 export const MIN_END_SCORE = 10;
 export const MAX_END_SCORE = 200;
+
+/** The fixed set of emoji a member may react with. */
+export const REACTIONS = ['👍', '😂', '😱', '🐮', '🎉', '😭'] as const;
+export type Reaction = (typeof REACTIONS)[number];
+/** Each member may send at most this many Reactions per window; extras are dropped. */
+export const REACTION_LIMIT = 5;
+export const REACTION_WINDOW_MS = 10_000;
 
 /** Upper-cases and trims user input; returns null unless it is a well-formed Room Code. */
 export function parseRoomCode(input: string): string | null {
@@ -56,6 +63,7 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('start') }),
   z.object({ v, type: z.literal('pick'), card }),
   z.object({ v, type: z.literal('chooseRow'), row }),
+  z.object({ v, type: z.literal('react'), emoji: z.enum(REACTIONS) }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -202,6 +210,8 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('welcome'), memberId: z.string(), token: z.string() }),
   /** A fresh snapshot after every change, plus public events to animate. */
   z.object({ v, type: z.literal('state'), room: roomViewSchema, events: z.array(gameEventSchema) }),
+  /** Someone in the Room reacted; shown briefly and never stored. */
+  z.object({ v, type: z.literal('reaction'), memberId: z.string(), emoji: z.enum(REACTIONS) }),
   z.object({ v, type: z.literal('error'), code: z.enum(ERROR_CODES) }),
   /** The client is on a different protocol version and must reload. */
   z.object({ v: z.number(), type: z.literal('reload') }),

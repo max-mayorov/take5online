@@ -3,7 +3,8 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import type { RoomData } from '../src/room';
 import type { RoomObject } from '../src/room-object';
-import { Client, createRoom, isError, isState, isWelcome } from './client';
+import { REACTION_LIMIT } from '@take5/protocol';
+import { Client, createRoom, isError, isReaction, isState, isWelcome } from './client';
 
 describe('HTTP API', () => {
   it('creates a Room and reports that it exists', async () => {
@@ -22,6 +23,18 @@ describe('HTTP API', () => {
   it('only accepts WebSocket upgrades on /ws', async () => {
     const response = await exports.default.fetch('http://test/ws/ABCD');
     expect(response.status).toBe(426);
+  });
+
+  it('rate-limits Room creation per IP', async () => {
+    const create = () =>
+      exports.default.fetch('http://test/api/rooms', {
+        method: 'POST',
+        headers: { 'CF-Connecting-IP': '203.0.113.7' },
+      });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await create()).status);
+    expect(statuses.slice(0, 10).every((s) => s === 201)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 
   it('404s unknown API routes', async () => {
@@ -102,6 +115,53 @@ describe('connections', () => {
       ['Max', true],
       ['Sam', false],
     ]);
+  });
+});
+
+describe('reactions', () => {
+  it('broadcasts a Reaction to everyone in the Room, Spectators included', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const sam = await Client.join(code, 'Sam');
+    const { message: welcome } = await max.next(isWelcome);
+    const from = [max, sam].map((c) => c.messages.length);
+    max.send({ type: 'react', emoji: '🐮' });
+    for (const [i, client] of [max, sam].entries()) {
+      const { message } = await client.next(isReaction, from[i]);
+      expect(message).toMatchObject({ memberId: welcome.memberId, emoji: '🐮' });
+    }
+  });
+
+  it('rejects an emoji outside the fixed set', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const from = max.messages.length;
+    max.send({ type: 'react', emoji: '🤡' });
+    expect((await max.next(isError, from)).message.code).toBe('bad_message');
+    expect(max.messages.slice(from).some(isReaction)).toBe(false);
+  });
+
+  it('needs a Nickname first', async () => {
+    const code = await createRoom();
+    const client = await Client.connect(code);
+    client.send({ type: 'react', emoji: '👍' });
+    expect((await client.next(isError)).message.code).toBe('nickname_required');
+  });
+
+  it('drops Reactions over the per-member rate limit', async () => {
+    const code = await createRoom();
+    const max = await Client.join(code, 'Max');
+    const sam = await Client.join(code, 'Sam');
+    const from = sam.messages.length;
+    for (let i = 0; i < REACTION_LIMIT + 3; i++) max.send({ type: 'react', emoji: '😂' });
+    // Messages are handled in order, so once this snapshot arrives every Reaction has been seen.
+    max.send({ type: 'sit' });
+    await sam.state(from);
+    expect(sam.messages.slice(from).filter(isReaction)).toHaveLength(REACTION_LIMIT);
+
+    // Another member has their own allowance.
+    sam.send({ type: 'react', emoji: '🎉' });
+    expect((await sam.next(isReaction, sam.messages.length)).message.emoji).toBe('🎉');
   });
 });
 
