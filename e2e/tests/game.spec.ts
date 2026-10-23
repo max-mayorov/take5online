@@ -104,7 +104,7 @@ test('a Reveal animates and finishes by itself', async ({ browser }) => {
     await expect
       .poll(async () => {
         const onBoard = await page.locator('.board-row .slot:not(.row-end) .card').count();
-        const waiting = await page.locator('.tray li').count();
+        const waiting = await page.locator('.tray li:not(.empty)').count();
         return onBoard + waiting;
       })
       .toBe(6);

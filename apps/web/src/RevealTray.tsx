@@ -4,8 +4,10 @@ import type { TrayCard } from './reveal';
 import { t } from './strings';
 import { reducedMotion } from './useReveal';
 
-/** How long a Pick takes to slide to its new place in the tray. */
+/** How long a Pick takes to slide over as another arrives or leaves. */
 const SLIDE_MS = 300;
+/** How long the Picks take to slide into ascending order for Placement. */
+const SORT_MS = 600;
 
 interface Props {
   tray: TrayCard[];
@@ -31,12 +33,15 @@ export function RevealTray({ tray, seats, you, choosing, name }: Props) {
       items.map((li) => [Number(li.dataset.seat), { x: li.offsetLeft, y: li.offsetTop }]),
     );
     if (reducedMotion()) return;
+    // The same Picks in a new order are being sorted for Placement.
+    const sorting =
+      items.length === before.size && items.every((li) => before.has(Number(li.dataset.seat)));
     for (const li of items) {
       const from = before.get(Number(li.dataset.seat));
       const [dx, dy] = from ? [from.x - li.offsetLeft, from.y - li.offsetTop] : [0, 0];
       if (dx === 0 && dy === 0) continue;
       li.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
-        duration: SLIDE_MS,
+        duration: sorting ? SORT_MS : SLIDE_MS,
         easing: 'ease',
       });
     }
@@ -51,12 +56,19 @@ export function RevealTray({ tray, seats, you, choosing, name }: Props) {
         <li
           key={p.seat}
           data-seat={p.seat}
-          className={p.seat === choosing ? 'low-card' : p.seat === you ? 'mine' : ''}
+          className={[
+            p.seat === choosing ? 'low-card' : p.seat === you ? 'mine' : '',
+            p.empty ? 'empty' : '',
+          ].join(' ')}
         >
-          <span className={`flip ${p.card === null ? 'face-down' : ''}`}>
-            {p.card !== null && <CardFace card={p.card} className="flip-front" />}
-            <CardBack className="flip-back" />
-          </span>
+          {p.empty ? (
+            <span className="tray-empty" />
+          ) : (
+            <span className={`flip ${p.card === null ? 'face-down' : ''}`}>
+              {p.card !== null && <CardFace card={p.card} className="flip-front" />}
+              <CardBack className="flip-back" />
+            </span>
+          )}
           <span className="tray-name">{name(p.seat)}</span>
         </li>
       ))}

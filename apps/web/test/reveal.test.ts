@@ -60,6 +60,14 @@ describe('revealFrames', () => {
         { seat: 1, card: after.picks[1] },
       ]);
       expect(table.hand).not.toContain(after.picks[1]);
+      // Seat 2 has not Picked yet, so its own slot waits empty after the others' Picks.
+      expect(tableFrom(viewFor(after, 2)).tray).toEqual([
+        { seat: 0, card: null },
+        { seat: 1, card: null },
+        { seat: 2, card: null, empty: true },
+      ]);
+      // A Spectator keeps no slot.
+      expect(tableFrom(viewFor(after, null)).tray).toHaveLength(2);
       return;
     }
     throw new Error('no Pick found');
@@ -113,8 +121,9 @@ describe('revealFrames', () => {
         } else {
           expect(last.board).toEqual(live.board);
           expect(last.piles).toEqual(live.piles);
-          // Paused at a Low Card, the Cards still waiting are the snapshot's.
-          expect(last.tray).toEqual(live.tray);
+          // Paused at a Low Card, the Cards still waiting are the snapshot's; otherwise the next
+          // Turn's tray waits with only the viewer's empty slot.
+          expect(last.tray).toEqual(live.tray.filter((p) => !p.empty));
         }
         expect(frames.every((f) => f.ms > 0)).toBe(true);
         checked++;

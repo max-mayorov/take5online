@@ -172,8 +172,8 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 - **Cards**: original SVG with a big number, a matching count of original bull icons, and colour by
   Bull-head tier (1 / 2 / 3 / 5 / 7). Tier is also readable from the icon count, so colour is never the only cue.
 - **Tray**: between the Board and the Hand, with room kept for every Seat's Pick so the Hand never moves.
-  Each Pick lands there face down as it is made; the viewer's own Pick leaves their Hand and shows face
-  up to them only, and Picking another Card from the Hand swaps it.
+  Each Pick lands there face down as it is made; the viewer's own slot waits empty until their Pick
+  leaves their Hand for it, face up to them only, and Picking another Card from the Hand swaps it.
 - **Reveal**: Picks flip together where they lie, slide into ascending order, then are Placed one by one
   (~600 ms each), Takes animated into the Penalty Pile.
   - Each Placed Card flies from the tray to its slot in ~350 ms, the way a Taken Row flies into a Penalty

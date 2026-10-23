@@ -6,6 +6,8 @@ export type Sound = 'flip' | 'place' | 'take';
 export interface TrayCard {
   seat: number;
   card: Card | null;
+  /** The slot kept for the viewer's own Pick before they make it. */
+  empty?: true;
 }
 
 /** What the table shows at one moment: either the live snapshot or a step of a Reveal. */
@@ -19,7 +21,8 @@ export interface TableState {
   /** Cards in each Seat's Penalty Pile. */
   piles: number[];
   /**
-   * While Picking, each Seat that has Picked, in Seat order and face down but for the viewer's own.
+   * While Picking, each Seat that has Picked, in Seat order and face down but for the viewer's own,
+   * which keeps its slot even before it is made.
    * Once Revealed, the Cards still waiting for Placement, ascending.
    */
   tray: TrayCard[];
@@ -44,7 +47,7 @@ export interface Frame {
 export const TIMING = {
   faceDown: 350,
   flip: 900,
-  sort: 500,
+  sort: 800,
   place: 600,
   taking: 700,
   take: 800,
@@ -59,18 +62,21 @@ export function tableFrom(game: GameView): TableState {
     board: game.board.map((row) => [...row]),
     scores: game.seats.map((s) => s.score),
     piles: game.seats.map((s) => s.penaltyPile.length),
-    tray:
-      game.phase === 'picking'
-        ? game.seats.flatMap((s, seat) =>
-            s.picked ? [{ seat, card: seat === game.seat ? game.pick : null }] : [],
-          )
-        : game.unplaced.map((p) => ({ ...p })),
+    tray: game.phase === 'picking' ? pickingTray(game) : game.unplaced.map((p) => ({ ...p })),
     placed: null,
     taking: null,
     flight: null,
     choosing: game.choosingSeat,
     roundEnded: null,
   };
+}
+
+/** Each Seat that has Picked, face down, and the viewer's own slot, Picked or not yet. */
+function pickingTray(game: GameView): TrayCard[] {
+  return game.seats.flatMap((s, seat): TrayCard[] => {
+    if (seat !== game.seat) return s.picked ? [{ seat, card: null }] : [];
+    return [game.pick === null ? { seat, card: null, empty: true } : { seat, card: game.pick }];
+  });
 }
 
 /** Whether these events change the table in a way worth animating. */
