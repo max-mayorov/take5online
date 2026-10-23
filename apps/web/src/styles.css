@@ -628,15 +628,6 @@ button:disabled {
   gap: 0.35rem;
 }
 
-.table-top .skip {
-  margin-left: 0.6rem;
-}
-
-.skip {
-  padding: 0.35rem 0.8rem;
-  font-weight: 600;
-}
-
 .table-seats {
   grid-area: seats;
 }

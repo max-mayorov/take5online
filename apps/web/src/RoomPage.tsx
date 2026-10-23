@@ -130,7 +130,7 @@ function NicknameForm({ onSubmit }: { onSubmit: (nickname: string) => void }) {
 }
 
 function Joined({ room, view }: { room: Room; view: RoomView }) {
-  const { frame, skip } = useReveal(room.update);
+  const frame = useReveal(room.update);
   // Keep the table up while the last Reveal of a Game plays out, then show Results.
   const atTable = view.game && (view.phase === 'game' || frame !== null);
   return (
@@ -140,7 +140,6 @@ function Joined({ room, view }: { room: Room; view: RoomView }) {
           view={view}
           game={view.game!}
           frame={frame}
-          onSkip={skip}
           reactions={room.reactions}
           send={room.send}
           onLeave={room.leave}
