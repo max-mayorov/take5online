@@ -1,5 +1,5 @@
 import { DECK_SIZE, MAX_SEATS, ROW_COUNT, type GameEvent, type GameView } from '@take5/engine';
-import { z } from 'zod';
+import * as z from 'zod/mini';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
 export const PROTOCOL_VERSION = 3;
@@ -30,21 +30,18 @@ export function parseRoomCode(input: string): string | null {
   return pattern.test(code) ? code : null;
 }
 
-export const nicknameSchema = z.string().trim().min(1).max(NICKNAME_MAX_LENGTH);
+export const nicknameSchema = z
+  .string()
+  .check(z.trim(), z.minLength(1), z.maxLength(NICKNAME_MAX_LENGTH));
 
-const card = z.number().int().min(1).max(DECK_SIZE);
-const seat = z
-  .number()
-  .int()
-  .min(0)
-  .max(MAX_SEATS - 1);
-const row = z
-  .number()
-  .int()
-  .min(0)
-  .max(ROW_COUNT - 1);
+/** An integer in [min, max]. */
+const int = (min: number, max: number) => z.int().check(z.minimum(min), z.maximum(max));
+const count = z.int();
+const card = int(1, DECK_SIZE);
+const seat = int(0, MAX_SEATS - 1);
+const row = int(0, ROW_COUNT - 1);
 const v = z.literal(PROTOCOL_VERSION);
-const memberId = z.string().max(64);
+const memberId = z.string().check(z.maxLength(64));
 const pickTimer = z.literal(PICK_TIMER_OPTIONS);
 
 // ---------------------------------------------------------------------------
@@ -55,8 +52,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     v,
     type: z.literal('hello'),
-    token: z.string().max(64).optional(),
-    nickname: nicknameSchema.optional(),
+    token: z.optional(z.string().check(z.maxLength(64))),
+    nickname: z.optional(nicknameSchema),
   }),
   z.object({ v, type: z.literal('sit') }),
   z.object({ v, type: z.literal('stand') }),
@@ -65,8 +62,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({
     v,
     type: z.literal('settings'),
-    endScore: z.number().int().min(MIN_END_SCORE).max(MAX_END_SCORE).optional(),
-    pickTimer: pickTimer.optional(),
+    endScore: z.optional(int(MIN_END_SCORE, MAX_END_SCORE)),
+    pickTimer: z.optional(pickTimer),
   }),
   z.object({ v, type: z.literal('start') }),
   z.object({ v, type: z.literal('pick'), card }),
@@ -170,30 +167,30 @@ export type ErrorCode = (typeof ERROR_CODES)[number];
 const playedCard = z.object({ seat, card });
 const board = z.array(z.array(card));
 
-const gameViewSchema: z.ZodType<GameView> = z.object({
-  config: z.object({ seatCount: z.number().int(), endScore: z.number().int() }),
-  round: z.number().int(),
-  turn: z.number().int(),
+const gameViewSchema: z.ZodMiniType<GameView> = z.object({
+  config: z.object({ seatCount: count, endScore: count }),
+  round: count,
+  turn: count,
   phase: z.enum(['picking', 'choosingRow', 'gameOver']),
   board,
   seats: z.array(
     z.object({
-      handSize: z.number().int(),
+      handSize: count,
       picked: z.boolean(),
-      score: z.number().int(),
+      score: count,
       penaltyPile: z.array(card),
     }),
   ),
   unplaced: z.array(playedCard),
-  choosingSeat: seat.nullable(),
+  choosingSeat: z.nullable(seat),
   winners: z.array(seat),
-  seat: seat.nullable(),
+  seat: z.nullable(seat),
   hand: z.array(card),
-  pick: card.nullable(),
+  pick: z.nullable(card),
 });
 
-const gameEventSchema: z.ZodType<GameEvent> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('roundStarted'), round: z.number().int(), board }),
+const gameEventSchema: z.ZodMiniType<GameEvent> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('roundStarted'), round: count, board }),
   z.object({ type: z.literal('picked'), seat }),
   z.object({ type: z.literal('revealed'), cards: z.array(playedCard) }),
   z.object({ type: z.literal('rowChoiceRequired'), seat, card }),
@@ -202,10 +199,10 @@ const gameEventSchema: z.ZodType<GameEvent> = z.discriminatedUnion('type', [
     seat,
     row,
     cards: z.array(card),
-    bullHeads: z.number().int(),
+    bullHeads: count,
   }),
   z.object({ type: z.literal('cardPlaced'), seat, card, row }),
-  z.object({ type: z.literal('roundEnded'), round: z.number().int(), scores: z.array(z.number()) }),
+  z.object({ type: z.literal('roundEnded'), round: count, scores: z.array(z.number()) }),
   z.object({
     type: z.literal('gameEnded'),
     scores: z.array(z.number()),
@@ -213,7 +210,7 @@ const gameEventSchema: z.ZodType<GameEvent> = z.discriminatedUnion('type', [
   }),
 ]);
 
-const roomViewSchema: z.ZodType<RoomView> = z.object({
+const roomViewSchema: z.ZodMiniType<RoomView> = z.object({
   code: z.string(),
   phase: z.enum(['lobby', 'game', 'results']),
   hostId: z.string(),
@@ -228,20 +225,20 @@ const roomViewSchema: z.ZodType<RoomView> = z.object({
     }),
   ),
   seats: z.array(z.string()),
-  settings: z.object({ endScore: z.number().int(), pickTimer }),
-  game: gameViewSchema.nullable(),
+  settings: z.object({ endScore: count, pickTimer }),
+  game: z.nullable(gameViewSchema),
   gameSeats: z.array(z.object({ memberId: z.string(), nickname: z.string(), bot: z.boolean() })),
   totals: z.array(
     z.object({
       memberId: z.string(),
       nickname: z.string(),
       bot: z.boolean(),
-      games: z.number().int(),
-      wins: z.number().int(),
-      bullHeads: z.number().int(),
+      games: count,
+      wins: count,
+      bullHeads: count,
     }),
   ),
-  deadline: z.number().nullable(),
+  deadline: z.nullable(z.number()),
   now: z.number(),
 });
 
