@@ -93,7 +93,7 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
         <p className={`prompt ${iMustChoose ? 'urgent' : ''}`} aria-live="polite">
           {prompt}
         </p>
-        {!animating && <Countdown deadline={view.deadline} now={view.now} />}
+        <Countdown deadline={view.deadline} now={view.now} hidden={animating} />
       </div>
 
       {mySeat !== null && game.phase !== 'gameOver' && (

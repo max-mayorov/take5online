@@ -847,6 +847,8 @@ button:disabled {
   font-weight: 600;
   margin: 0;
   text-align: center;
+  /* Room for two lines whatever the prompt says, so the Hand below stays put. */
+  min-height: calc(2 * 1.35em);
 }
 
 .prompt.urgent {
@@ -1229,6 +1231,10 @@ select:focus-visible {
   background: var(--surface);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.countdown.hidden {
+  visibility: hidden;
 }
 
 .countdown.urgent {
