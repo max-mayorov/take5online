@@ -1,8 +1,7 @@
-import type { GameEvent } from '@take5/engine';
 import { MAX_END_SCORE, MIN_END_SCORE, type Reaction, type RoomView } from '@take5/protocol';
 import { useState, type FormEvent } from 'react';
 import { BullIcon } from './Card';
-import { useRoom } from './connection';
+import { useRoom, type LoggedEvent } from './connection';
 import { GameTable } from './GameTable';
 import { HostControls } from './HostControls';
 import { Floaters, ReactionPicker } from './Reactions';
@@ -150,7 +149,11 @@ function Joined({ room, view }: { room: Room; view: RoomView }) {
           <Lobby room={room} view={view} />
         </div>
       )}
-      {!frame && <EventLog events={room.events} view={view} />}
+      {/* While a Reveal plays, the log waits for it rather than giving away how it ends. */}
+      <EventLog
+        events={frame ? room.events.filter((e) => e.seq < frame.seq) : room.events}
+        view={view}
+      />
     </>
   );
 }
@@ -343,9 +346,11 @@ function Results({ view }: { view: RoomView }) {
   );
 }
 
-function EventLog({ events, view }: { events: GameEvent[]; view: RoomView }) {
+/** What happened since the current Round was dealt, newest first. */
+function EventLog({ events, view }: { events: LoggedEvent[]; view: RoomView }) {
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
-  const lines = events.flatMap((event): string[] => {
+  const dealt = events.findLastIndex((e) => e.event.type === 'roundStarted');
+  const lines = events.slice(Math.max(dealt, 0)).flatMap(({ event }): string[] => {
     switch (event.type) {
       case 'revealed':
         return [t.log.revealed];
@@ -362,12 +367,9 @@ function EventLog({ events, view }: { events: GameEvent[]; view: RoomView }) {
   if (lines.length === 0) return null;
   return (
     <ul className="log muted">
-      {lines
-        .slice(-6)
-        .reverse()
-        .map((line, i) => (
-          <li key={i}>{line}</li>
-        ))}
+      {lines.reverse().map((line, i) => (
+        <li key={i}>{line}</li>
+      ))}
     </ul>
   );
 }
