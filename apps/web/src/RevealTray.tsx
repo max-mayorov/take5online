@@ -56,19 +56,12 @@ export function RevealTray({ tray, seats, you, choosing, name }: Props) {
         <li
           key={p.seat}
           data-seat={p.seat}
-          className={[
-            p.seat === choosing ? 'low-card' : p.seat === you ? 'mine' : '',
-            p.empty ? 'empty' : '',
-          ].join(' ')}
+          className={p.seat === choosing ? 'low-card' : p.seat === you ? 'mine' : ''}
         >
-          {p.empty ? (
-            <span className="tray-empty" />
-          ) : (
-            <span className={`flip ${p.card === null ? 'face-down' : ''}`}>
-              {p.card !== null && <CardFace card={p.card} className="flip-front" />}
-              <CardBack className="flip-back" />
-            </span>
-          )}
+          <span className={`flip ${p.card === null ? 'face-down' : ''}`}>
+            {p.card !== null && <CardFace card={p.card} className="flip-front" />}
+            <CardBack className="flip-back" />
+          </span>
           <span className="tray-name">{name(p.seat)}</span>
         </li>
       ))}

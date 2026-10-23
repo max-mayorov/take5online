@@ -910,14 +910,6 @@ button:disabled {
   outline-offset: 1px;
 }
 
-.tray-empty {
-  display: block;
-  width: 100%;
-  aspect-ratio: 60 / 84;
-  border: 2px dashed var(--line);
-  border-radius: 0.35rem;
-}
-
 .flip {
   position: relative;
   display: block;
