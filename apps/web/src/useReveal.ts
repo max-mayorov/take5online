@@ -10,6 +10,11 @@ export interface Update {
   events: GameEvent[];
 }
 
+/** A Reveal step, with the Update it shows. */
+export interface QueuedFrame extends Frame {
+  seq: number;
+}
+
 /** Beyond this many queued steps, older Reveals are dropped rather than replayed. */
 const MAX_QUEUE = 80;
 
@@ -22,7 +27,7 @@ export function reducedMotion(): boolean {
  * when the table should show the live snapshot.
  */
 export function useReveal(update: Update | null) {
-  const [queue, setQueue] = useState<Frame[]>([]);
+  const [queue, setQueue] = useState<QueuedFrame[]>([]);
   const seen = useRef(update?.seq ?? 0);
 
   // Before paint: the render that brings a new snapshot must not show it before its Reveal.
@@ -34,7 +39,8 @@ export function useReveal(update: Update | null) {
       summarySounds(update.events).forEach(playSound);
       return;
     }
-    const frames = revealFrames(update.before, update.events);
+    const { seq } = update;
+    const frames = revealFrames(update.before, update.events).map((f) => ({ ...f, seq }));
     if (frames.length > 0)
       setQueue((q) => (q.length + frames.length > MAX_QUEUE ? frames : [...q, ...frames]));
   }, [update]);

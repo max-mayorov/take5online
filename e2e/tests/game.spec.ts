@@ -242,6 +242,28 @@ test('the Hand stays locked from the flip until every Card is Placed', async ({ 
   }
 });
 
+test('the log stays up during a Reveal, and catches up once it has played', async ({ browser }) => {
+  const page = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+  await page.getByRole('button', { name: /Add a bot/ }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await page.getByRole('button', { name: 'Start game' }).click();
+
+  const revealed = page.locator('.log li', { hasText: 'Cards revealed.' });
+  for (let turn = 0; turn < 2; turn++) {
+    await chooseRowIfAsked([page]);
+    await expect(page.locator('.picked-mark')).toHaveCount(1, { timeout: 10_000 });
+    await page.locator('.hand .card-button').last().click();
+    await expect(page.getByText('Revealing…')).toBeVisible();
+    await expect(page.locator('.log')).toBeVisible();
+    await expect(revealed).toHaveCount(turn);
+    await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
+    await expect(revealed).toHaveCount(turn + 1);
+  }
+});
+
 test('reactions float over the sender for everyone', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
   await max.getByRole('button', { name: 'React', exact: true }).click();

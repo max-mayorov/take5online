@@ -19,8 +19,8 @@ export interface RoomConnection {
   room: RoomView | null;
   /** The latest server error, cleared on the next successful snapshot. */
   error: ErrorCode | null;
-  /** Events from recent snapshots, newest last. */
-  events: GameEvent[];
+  /** Events from recent snapshots, newest last, each with the Update that brought it. */
+  events: LoggedEvent[];
   /** The latest snapshot change, for animating it. */
   update: Update | null;
   /** Reactions received in the last few seconds. */
@@ -28,6 +28,11 @@ export interface RoomConnection {
   reconnecting: boolean;
   /** Several connections in a row failed before opening: something (often an ad blocker) blocks them. */
   cantConnect: boolean;
+}
+
+export interface LoggedEvent {
+  seq: number;
+  event: GameEvent;
 }
 
 export interface ReactionShown {
@@ -42,7 +47,8 @@ export const REACTION_MS = 2500;
 const PING_MS = 25_000;
 /** Failed opens in a row before the "can't connect" hint shows (~4 s with the backoff below). */
 const CANT_CONNECT_AFTER = 3;
-const MAX_EVENTS = 40;
+/** Two Rounds at a full table, so the log can show the current Round whole. */
+const MAX_EVENTS = 500;
 
 const tokenKey = (code: string) => `take5:token:${code}`;
 
@@ -160,7 +166,10 @@ export function useRoom(code: string) {
               ...s,
               room: message.room,
               error: null,
-              events: [...s.events, ...message.events].slice(-MAX_EVENTS),
+              events: [
+                ...s.events,
+                ...message.events.map((event) => ({ seq: update.seq, event })),
+              ].slice(-MAX_EVENTS),
               update: { ...update, before: s.room?.game ?? null },
             }));
             break;
