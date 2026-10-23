@@ -1,0 +1,23 @@
+{
+  "name": "@take5/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run --max-workers=1 --no-isolate",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@take5/engine": "workspace:*",
+    "@take5/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.0",
+    "@cloudflare/workers-types": "5.20261008.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11",
+    "wrangler": "4.149.0"
+  }
+}

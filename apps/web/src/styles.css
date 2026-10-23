@@ -1,0 +1,258 @@
+/* Bare-bones M2 styling; the real look arrives in M3. */
+:root {
+  --bg: #fafaf7;
+  --fg: #1d1d1b;
+  --muted: #6b6b66;
+  --line: #d8d8d0;
+  --accent: #2f6fdf;
+  --error: #b42318;
+  --tier-1: #ffffff;
+  --tier-2: #d9ecff;
+  --tier-3: #fff2b3;
+  --tier-5: #ffd2b3;
+  --tier-7: #f5b3d0;
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --fg: #ededea;
+    --muted: #9d9d97;
+    --line: #3a3a37;
+    --accent: #6d9cf0;
+    --error: #f97066;
+    --tier-1: #2a2a28;
+    --tier-2: #1f3550;
+    --tier-3: #4a4120;
+    --tier-5: #50331f;
+    --tier-7: #522238;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+button,
+input {
+  font: inherit;
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+button:disabled {
+  opacity: 0.5;
+}
+
+.narrow {
+  width: 5rem;
+}
+
+.home,
+.center,
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.center {
+  align-items: center;
+  text-align: center;
+  padding-top: 3rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wrap {
+  flex-wrap: wrap;
+}
+
+.spread {
+  justify-content: space-between;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--error);
+}
+
+.big {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.prompt {
+  font-weight: 600;
+  margin: 0;
+}
+
+.scores {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+
+.scores li {
+  display: flex;
+  justify-content: space-between;
+}
+
+.scores .me {
+  font-weight: 600;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem;
+  min-height: 3.6rem;
+  text-align: left;
+}
+
+.board-row:disabled {
+  opacity: 1;
+}
+
+.board-row.choosable {
+  border: 2px solid var(--accent);
+}
+
+.row-total {
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.hand {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  padding-bottom: 0.3rem;
+}
+
+.card-button {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 3.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  flex-shrink: 0;
+}
+
+.card.selected {
+  outline: 3px solid var(--accent);
+}
+
+.card-number {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.card-heads {
+  font-size: 0.45rem;
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+}
+
+.tier-1 {
+  background: var(--tier-1);
+}
+.tier-2 {
+  background: var(--tier-2);
+}
+.tier-3 {
+  background: var(--tier-3);
+}
+.tier-5 {
+  background: var(--tier-5);
+}
+.tier-7 {
+  background: var(--tier-7);
+}
+
+.members ol,
+.members ul,
+.log {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.2rem 0.8rem 0.2rem 0;
+}

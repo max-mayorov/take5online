@@ -99,7 +99,7 @@ An ordered line of one to five Cards on the Board, rising from left to right.
 _Avoid_: Stack, pile, line, column
 
 **Pick**:
-A Seat's secret choice of one Card from its Hand during a Turn.
+A Seat's secret choice of one Card from its Hand during a Turn; it can be changed until the Reveal.
 _Avoid_: Play, selection, move
 
 **Reveal**:
