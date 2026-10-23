@@ -170,6 +170,52 @@ test('the rules are a click away on Wikipedia, here and in every room', async ({
   await expect(rules).toHaveAttribute('target', '_blank');
 });
 
+test('a Reveal starts from the old Board, without flashing the new one first', async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+  await page.getByRole('button', { name: /Add a bot/ }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await page.getByRole('button', { name: 'Start game' }).click();
+  // On a slow device React paints between rendering a snapshot and queueing its Reveal.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+
+  // Note the Board's Cards and the tray's size at every DOM change.
+  await page.evaluate(() => {
+    const board = () =>
+      [...document.querySelectorAll('.board-row .slot:not(.row-end) .card')]
+        .map((c) => c.getAttribute('aria-label'))
+        .join(' | ');
+    const seen: { board: string; tray: number }[] = [];
+    Object.assign(window, { board, seen });
+    new MutationObserver(() => {
+      seen.push({ board: board(), tray: document.querySelectorAll('.tray li').length });
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  type Recorder = { board: () => string; seen: { board: string; tray: number }[] };
+
+  // The flash showed when the last Pick was the viewer's, so let the Bot pick first. Picking
+  // the highest Card means it is never the Low Card, so the Reveal places Cards on the Board.
+  for (let turn = 0; turn < 3; turn++) {
+    await expect(page.locator('.picked-mark')).toHaveCount(1, { timeout: 10_000 });
+    const before = await page.evaluate(() => (window as unknown as Recorder).board());
+    await page.evaluate(() => (window as unknown as Recorder).seen.splice(0));
+    await page.locator('.hand .card-button').last().click();
+    await expect(page.getByText('Revealing…')).toBeVisible();
+    await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
+
+    // Until the tray shows the Picks, the Board must not change.
+    const seen = await page.evaluate(() => (window as unknown as Recorder).seen);
+    const trayAt = seen.findIndex((s) => s.tray > 0);
+    expect(trayAt).toBeGreaterThanOrEqual(0);
+    expect(seen.slice(0, trayAt).filter((s) => s.board !== before)).toEqual([]);
+  }
+});
+
 test('reactions float over the sender for everyone', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
   await max.getByRole('button', { name: 'React', exact: true }).click();

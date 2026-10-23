@@ -27,6 +27,8 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
   const name = (seat: number) => view.gameSeats[seat]?.nickname ?? '?';
   const table = frame?.table ?? tableFrom(game);
   const animating = frame !== null;
+  // While the Reveal that ends a Round plays, the next Round's Hand waits.
+  const nextDealt = table.round !== game.round;
   const mySeat = game.seat;
   const isHost = view.hostId === view.you;
   const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
@@ -102,9 +104,9 @@ export function GameTable({ view, game, frame, onSkip, reactions, send, onLeave 
 
       {mySeat !== null && game.phase !== 'gameOver' && (
         <Hand
-          hand={game.hand}
-          pick={game.pick}
-          enabled={game.phase === 'picking'}
+          hand={nextDealt ? table.hand : game.hand}
+          pick={nextDealt ? null : game.pick}
+          enabled={!nextDealt && game.phase === 'picking'}
           onPick={(card) => send({ type: 'pick', card })}
         />
       )}
