@@ -84,15 +84,17 @@ test('a Reveal animates and finishes by itself', async ({ browser }) => {
   const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
   await max.getByRole('button', { name: 'Start game' }).click();
 
-  await pickFirst(max);
+  // The highest Cards, so the Reveal Places at least one rather than waiting on a Low Card.
+  await pickFirst(max, 'last');
   await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
-  await pickFirst(sam);
+  await pickFirst(sam, 'last');
 
-  // Both Picks appear in the tray, then get Placed one by one until the animation ends.
+  // Both Picks appear in the tray, then fly to their Rows one by one until the animation ends.
   await Promise.all(
     [max, sam].map(async (page) => {
       await expect(page.getByText('Revealing…')).toBeVisible();
       await expect(page.locator('.tray .card')).not.toHaveCount(0);
+      await expect(page.locator('.flight .flyer')).toBeAttached();
       await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
     }),
   );
@@ -106,6 +108,106 @@ test('a Reveal animates and finishes by itself', async ({ browser }) => {
         return onBoard + waiting;
       })
       .toBe(6);
+  }
+});
+
+test('the host can switch card animation for the whole room, even mid-game', async ({
+  browser,
+}) => {
+  const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
+  const animate = max.getByLabel('Animate cards flying to their rows');
+  await expect(animate).toBeChecked();
+  await animate.click();
+  await expect(animate).not.toBeChecked();
+  await expect(sam.getByText('Card animation is off.')).toBeVisible();
+  await max.getByRole('button', { name: 'Start game' }).click();
+
+  // Note any Card that flies while the first Turn is Revealed.
+  const watchFlights = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as unknown as { flew: boolean };
+      w.flew = false;
+      new MutationObserver(() => {
+        w.flew ||= document.querySelector('.flight .flyer') !== null;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+  await Promise.all([max, sam].map(watchFlights));
+
+  await pickFirst(max, 'last');
+  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
+  await pickFirst(sam, 'last');
+
+  // The Reveal still plays, but Cards appear in their slots without flying there.
+  await Promise.all(
+    [max, sam].map(async (page) => {
+      await expect(page.getByText('Revealing…')).toBeVisible();
+      await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
+      expect(await page.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(false);
+    }),
+  );
+
+  // Only the Host can switch it back on mid-Game, and the next Turn's Cards fly for everyone.
+  await expect(sam.getByLabel('Animate cards', { exact: true })).toHaveCount(0);
+  const midGame = max.getByLabel('Animate cards', { exact: true });
+  await expect(midGame).not.toBeChecked();
+  await midGame.click();
+  await expect(midGame).toBeChecked();
+  await pickFirst(max, 'last');
+  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
+  await pickFirst(sam, 'last');
+  await expect(sam.locator('.flight .flyer')).toBeAttached();
+});
+
+test('the rules are a click away on Wikipedia, here and in every room', async ({ page }) => {
+  await page.goto('/');
+  const rules = page.getByRole('link', { name: /Rules of 6 nimmt!/ });
+  await expect(rules).toHaveAttribute('href', 'https://en.wikipedia.org/wiki/6_nimmt!');
+  await expect(rules).toHaveAttribute('target', '_blank');
+});
+
+test('a Reveal starts from the old Board, without flashing the new one first', async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await enter(page, 'Max');
+  await page.getByRole('button', { name: /Add a bot/ }).click();
+  await expect(page.getByText('Bot 1 (bot)')).toBeVisible();
+  await page.getByRole('button', { name: 'Start game' }).click();
+  // On a slow device React paints between rendering a snapshot and queueing its Reveal.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+
+  // Note the Board's Cards and the tray's size at every DOM change.
+  await page.evaluate(() => {
+    const board = () =>
+      [...document.querySelectorAll('.board-row .slot:not(.row-end) .card')]
+        .map((c) => c.getAttribute('aria-label'))
+        .join(' | ');
+    const seen: { board: string; tray: number }[] = [];
+    Object.assign(window, { board, seen });
+    new MutationObserver(() => {
+      seen.push({ board: board(), tray: document.querySelectorAll('.tray li').length });
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  type Recorder = { board: () => string; seen: { board: string; tray: number }[] };
+
+  // The flash showed when the last Pick was the viewer's, so let the Bot pick first. Picking
+  // the highest Card means it is never the Low Card, so the Reveal places Cards on the Board.
+  for (let turn = 0; turn < 3; turn++) {
+    await expect(page.locator('.picked-mark')).toHaveCount(1, { timeout: 10_000 });
+    const before = await page.evaluate(() => (window as unknown as Recorder).board());
+    await page.evaluate(() => (window as unknown as Recorder).seen.splice(0));
+    await page.locator('.hand .card-button').last().click();
+    await expect(page.getByText('Revealing…')).toBeVisible();
+    await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
+
+    // Until the tray shows the Picks, the Board must not change.
+    const seen = await page.evaluate(() => (window as unknown as Recorder).seen);
+    const trayAt = seen.findIndex((s) => s.tray > 0);
+    expect(trayAt).toBeGreaterThanOrEqual(0);
+    expect(seen.slice(0, trayAt).filter((s) => s.board !== before)).toEqual([]);
   }
 });
 
@@ -125,6 +227,7 @@ test('a reload keeps your seat and your mute choice', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a room' }).click();
   await enter(page, 'Max');
+  await expect(page.locator('.room-header').getByRole('link', { name: /Rules/ })).toBeVisible();
   await page.getByRole('button', { name: 'Mute sounds' }).click();
   await page.reload();
   await expect(page.getByText('Max (host, you)')).toBeVisible();
@@ -181,11 +284,14 @@ async function enter(page: Page, nickname: string) {
   await expect(page.getByText(`${nickname} (`).first()).toBeVisible();
 }
 
-/** Picks the leftmost Card not already Picked, and waits until the server has taken it. */
-async function pickFirst(page: Page) {
+/**
+ * Picks the leftmost (lowest) Card not already Picked, or the rightmost, and waits until the
+ * server has taken it.
+ */
+async function pickFirst(page: Page, end: 'first' | 'last' = 'first') {
   const turnLabel = page.getByText(/^Round \d+ · Turn/);
   const turn = (await turnLabel.allTextContents()).join();
-  const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)').first();
+  const button = page.locator('.hand .card-button[aria-pressed="false"]:not(:disabled)')[end]();
   const card = await button.getAttribute('data-card');
   await button.click();
   // A Picked Card is either raised in the Hand or, once the Turn is Revealed, gone from it,
