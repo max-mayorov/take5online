@@ -51,6 +51,15 @@ export interface Decision {
   started: boolean;
 }
 
+/** The Round Summary the clients show between Rounds, as the last step of a Reveal. */
+export interface Summary {
+  round: number;
+  /** When it runs out on the clients, unless every Player is ready sooner. */
+  ends: number;
+  /** Member ids of the Players who tapped Continue. */
+  ready: string[];
+}
+
 /** The whole persisted state of one Room. */
 export interface RoomData {
   code: string;
@@ -70,6 +79,8 @@ export interface RoomData {
   decision: Decision | null;
   /** When the clients finish playing the Reveals of every move so far. */
   revealEnds: number;
+  /** The Round Summary showing now, if any. */
+  summary: Summary | null;
 }
 
 export type RoomResult = { ok: true; events: RoomEvent[] } | { ok: false; error: ErrorCode };
@@ -92,6 +103,7 @@ export function createRoom(code: string, now: number): RoomData {
     awaySince: {},
     decision: null,
     revealEnds: 0,
+    summary: null,
   };
 }
 
@@ -109,6 +121,7 @@ export function upgradeRoom(stored: RoomData): RoomData {
   room.decision ??= null;
   if (room.decision) room.decision.started ??= true;
   room.revealEnds ??= 0;
+  room.summary ??= null;
   delete (room as { deadline?: unknown }).deadline;
   return room;
 }
@@ -259,6 +272,7 @@ export function start(room: RoomData, memberId: string, seed: number): RoomResul
   });
   room.phase = 'game';
   room.decision = null;
+  room.summary = null;
   return ok(events);
 }
 
@@ -280,6 +294,18 @@ export function play(
       ? { type: 'pick', seat, card: intent.card }
       : { type: 'chooseRow', seat, row: intent.row };
   return apply(room, action, now);
+}
+
+/**
+ * A seated Player is done with the Round Summary. Once every connected Player is, the next
+ * Round starts without waiting out the rest of it.
+ */
+export function continueRound(room: RoomData, memberId: string): RoomResult {
+  if (!room.gameSeats.some((s) => s.memberId === memberId)) return fail('not_seated');
+  // A tap that arrives after the Summary closed has nothing left to do.
+  const summary = room.summary;
+  if (summary && !summary.ready.includes(memberId)) summary.ready.push(memberId);
+  return ok();
 }
 
 /**
@@ -314,6 +340,7 @@ export function isAway(room: RoomData, memberId: string): boolean {
  */
 export function tick(room: RoomData, now: number): RoomEvent[] {
   handOffHost(room, now);
+  closeSummary(room, now);
   const events: RoomEvent[] = [];
   if (room.phase !== 'game' || !room.game || !anyoneConnected(room)) {
     room.decision = null;
@@ -362,6 +389,9 @@ function apply(room: RoomData, action: Action, now: number): RoomResult {
   room.game = result.state;
   // Clients queue Reveals, so this one plays after any still playing.
   room.revealEnds = Math.max(room.revealEnds, now) + revealMs(result.events);
+  // The Round Summary is the last step of the Reveal that ends a Round.
+  const ended = result.events.find((e) => e.type === 'roundEnded');
+  if (ended) room.summary = { round: ended.round, ends: room.revealEnds, ready: [] };
   if (result.state.phase === 'gameOver') finishGame(room, result.state);
   return ok(result.events);
 }
@@ -421,6 +451,24 @@ function refreshDecision(room: RoomData, now: number): void {
       : `${game.round}.${game.turn}.${game.unplaced.length}`;
   if (room.decision?.key !== key) {
     room.decision = { key, since: Math.max(now, room.revealEnds), started: false };
+  }
+}
+
+/**
+ * Closes the Round Summary once it has run out, or as soon as every connected Player is ready:
+ * then the Reveal ends now, and so the next decision starts now.
+ */
+function closeSummary(room: RoomData, now: number): void {
+  const summary = room.summary;
+  if (!summary) return;
+  const players = room.gameSeats.filter((s) => isConnectedPerson(room, s.memberId));
+  const done = players.length > 0 && players.every((s) => summary.ready.includes(s.memberId));
+  if (!done && now < summary.ends) return;
+  room.summary = null;
+  if (!done) return;
+  room.revealEnds = Math.min(room.revealEnds, now);
+  if (room.decision && !room.decision.started) {
+    room.decision.since = Math.min(room.decision.since, now);
   }
 }
 
@@ -541,6 +589,7 @@ export function roomView(
     gameSeats: room.gameSeats.map((s) => ({ ...s })),
     totals: room.totals.map((t) => ({ ...t })),
     deadline: room.phase === 'game' ? pickDeadline(room) : null,
+    summary: room.summary ? { round: room.summary.round, ready: [...room.summary.ready] } : null,
     now,
   };
 }

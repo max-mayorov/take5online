@@ -78,6 +78,10 @@ _Avoid_: Point limit, target, max score
 One deal of ten Cards to every Seat, played out over ten Turns.
 _Avoid_: Hand (that is the cards held), deal
 
+**Round Summary**:
+What each Seat Took in a Round that has just ended, shown between Rounds until every Player taps Continue or it runs out.
+_Avoid_: Scoreboard, round results
+
 **Turn**:
 One cycle in which every Seat Picks a Card, then all Picks are Revealed and Placed.
 _Avoid_: Trick, move, step

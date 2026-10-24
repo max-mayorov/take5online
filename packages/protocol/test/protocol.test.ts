@@ -37,6 +37,7 @@ describe('clientMessageSchema', () => {
     { v, type: 'replaceWithBot', memberId: 'm2' },
     { v, type: 'takeSeat', seat: 9 },
     { v, type: 'react', emoji: '🐮' },
+    { v, type: 'continue' },
   ])('accepts %o', (message) => {
     expect(clientMessageSchema.safeParse(message).success).toBe(true);
   });
@@ -93,6 +94,7 @@ describe('serverMessageSchema', () => {
         ],
         totals: [{ memberId: 'b', nickname: 'Bot 1', bot: true, games: 1, wins: 1, bullHeads: 4 }],
         deadline: 1_700_000_060_000,
+        summary: { round: 1, ready: ['a'] },
         now: 1_700_000_000_000,
       },
       events: [

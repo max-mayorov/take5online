@@ -1,4 +1,4 @@
-import type { Card, GameView } from '@take5/engine';
+import { sumBullHeads, type Card, type GameView } from '@take5/engine';
 import { isAnimated, TIMING, type RoomEvent } from '@take5/protocol';
 
 export { isAnimated, TIMING };
@@ -35,7 +35,16 @@ export interface TableState {
   /** The Seat choosing a Row to Take for its Low Card. */
   choosing: number | null;
   /** Set while showing that a Round has just ended. */
-  roundEnded: number | null;
+  roundEnded: RoundEnd | null;
+}
+
+/** A Round that has just ended, for the banner between Rounds. */
+export interface RoundEnd {
+  round: number;
+  /** Per Seat: Bull-heads Taken during the Round. */
+  points: number[];
+  /** The Round dealt next, or null when the Game is over. */
+  next: number | null;
 }
 
 export interface Frame {
@@ -139,9 +148,22 @@ export function revealFrames(before: GameView, events: readonly RoomEvent[]): Fr
           'place',
         );
         break;
-      case 'roundEnded':
-        push({ tray: [], roundEnded: event.round }, TIMING.roundEnded);
+      case 'roundEnded': {
+        // What each Seat had Taken before this Reveal, plus what it Took during it.
+        const points = event.scores.map(
+          (score, seat) =>
+            score - before.seats[seat]!.score + sumBullHeads(before.seats[seat]!.penaltyPile),
+        );
+        const over = events.some((e) => e.type === 'gameEnded');
+        push(
+          {
+            tray: [],
+            roundEnded: { round: event.round, points, next: over ? null : event.round + 1 },
+          },
+          TIMING.roundEnded,
+        );
         break;
+      }
       default:
         // Picks, the Low Card pause, the next deal and a decision's start show in the live snapshot.
         break;

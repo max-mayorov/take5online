@@ -15,6 +15,7 @@ import {
 import {
   addBot,
   changeSettings,
+  continueRound,
   createRoom,
   join,
   kick,
@@ -212,6 +213,8 @@ export class RoomObject extends DurableObject<Env> {
         return replaceWithBot(room, memberId, message.memberId);
       case 'takeSeat':
         return takeSeat(room, memberId, message.seat);
+      case 'continue':
+        return continueRound(room, memberId);
     }
   }
 
