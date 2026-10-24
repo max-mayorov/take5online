@@ -9,7 +9,7 @@ import {
 import * as z from 'zod/mini';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 4;
@@ -86,6 +86,8 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   /** A Spectator takes over the Seat a Bot occupies. */
   z.object({ v, type: z.literal('takeSeat'), seat }),
   z.object({ v, type: z.literal('react'), emoji: z.enum(REACTIONS) }),
+  /** A seated Player is done with the Round Summary; it closes once every Player is. */
+  z.object({ v, type: z.literal('continue') }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -117,7 +119,8 @@ export const TIMING = {
   place: 600,
   taking: 700,
   take: 800,
-  roundEnded: 1600,
+  /** The Round Summary, unless every Player taps Continue sooner. */
+  roundEnded: 8000,
 } as const;
 
 /** Whether these events change the table in a way worth animating. */
@@ -190,6 +193,13 @@ export interface RoomSettings {
   pickTimer: PickTimer;
 }
 
+/** The Round Summary showing between Rounds, and who has tapped Continue. */
+export interface SummaryView {
+  round: number;
+  /** Member ids of the Players done with it. */
+  ready: string[];
+}
+
 /** Everything one connection may see of a Room. */
 export interface RoomView {
   code: string;
@@ -207,6 +217,8 @@ export interface RoomView {
   totals: SessionTotal[];
   /** When the Pick Timer runs out for the current decision (epoch ms), or null if it isn't running. */
   deadline: number | null;
+  /** Null once every Player has tapped Continue, or the Round Summary has run its time. */
+  summary: SummaryView | null;
   /** The server's clock when this snapshot was made, so clients can correct for their own. */
   now: number;
 }
@@ -312,6 +324,7 @@ const roomViewSchema: z.ZodMiniType<RoomView> = z.object({
     }),
   ),
   deadline: z.nullable(z.number()),
+  summary: z.nullable(z.object({ round: count, ready: z.array(z.string()) })),
   now: z.number(),
 });
 

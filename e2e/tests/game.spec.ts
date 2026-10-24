@@ -49,6 +49,7 @@ test('one person plays a whole game against a bot', async ({ browser }) => {
   // starts once the Reveal has had time to play, even though reduced motion skips it here.
   const maxToMove = page
     .locator('.prompt', { hasText: /^Pick a card|Tap a row/ })
+    .or(page.getByRole('button', { name: 'Continue' }))
     .or(page.getByText('Game over'));
   for (let steps = 0; !(await page.getByText('Game over').isVisible()); steps++) {
     expect(steps).toBeLessThan(400);
@@ -79,6 +80,34 @@ test('the host can kick, and a newcomer can take over the bot that took the seat
   await kim.getByRole('button', { name: 'Take over Bot 1’s seat' }).click();
   await expect(kim.locator('.seat.me')).toContainText('Kim');
   await expect(kim.locator('.hand .card-button')).not.toHaveCount(0);
+});
+
+test('the Round Summary closes as soon as every Player taps Continue', async ({ browser }) => {
+  const [max, sam] = await friends(browser, { reducedMotion: 'reduce' });
+  await max.getByRole('button', { name: 'Start game' }).click();
+  await expect(sam.locator('.hand .card-button')).toHaveCount(10);
+
+  const summary = (page: Page) => page.getByRole('region', { name: 'Round 1 over' });
+  while (!(await summary(max).isVisible())) {
+    for (const page of [max, sam]) await act(page, { tapContinue: false });
+  }
+  await expect(summary(sam)).toBeVisible();
+  await expect(summary(max).getByRole('listitem')).toHaveCount(2);
+  await expect(summary(max).getByText('Round 2 coming up')).toBeVisible();
+
+  await max.getByRole('button', { name: 'Continue' }).click();
+  await expect(max.getByRole('button', { name: 'Waiting for the others…' })).toBeDisabled();
+  const maxRow = summary(sam).getByRole('listitem').filter({ hasText: 'Max' });
+  await expect(maxRow.getByLabel('ready')).toBeVisible();
+  await expect(summary(max)).toBeVisible();
+
+  // Well before the Summary would close by itself.
+  await sam.getByRole('button', { name: 'Continue' }).click();
+  for (const page of [max, sam]) {
+    await expect(summary(page)).toHaveCount(0, { timeout: 3000 });
+    await expect(page.getByText('Round 2 · Turn 1/10')).toBeVisible();
+    await expect(page.locator('.prompt')).toHaveText(/^Pick a card/);
+  }
 });
 
 test('a Reveal animates and finishes by itself', async ({ browser }) => {
@@ -310,7 +339,12 @@ async function chooseRowIfAsked(pages: Page[]) {
   }
 }
 
-async function act(page: Page) {
+async function act(page: Page, { tapContinue = true } = {}) {
+  const next = page.getByRole('button', { name: 'Continue' });
+  if (await next.isVisible()) {
+    if (tapContinue) await next.click();
+    return;
+  }
   const row = page.locator('.board-row.choosable').first();
   if (await row.isVisible()) {
     await row.click();

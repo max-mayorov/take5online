@@ -71,7 +71,16 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
         choosable={iMustChoose}
         onChoose={(row) => send({ type: 'chooseRow', row })}
       />
-      {table.roundEnded && <RoundBanner end={table.roundEnded} scores={table.scores} name={name} />}
+      {table.roundEnded && (
+        <RoundBanner
+          end={table.roundEnded}
+          scores={table.scores}
+          name={name}
+          ready={(seat) => !!view.summary?.ready.includes(view.gameSeats[seat]?.memberId ?? '')}
+          you={mySeat}
+          onContinue={() => send({ type: 'continue' })}
+        />
+      )}
 
       <div className="status">
         <RevealTray

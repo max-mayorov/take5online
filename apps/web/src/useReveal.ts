@@ -25,9 +25,10 @@ export function reducedMotion(): boolean {
 
 /**
  * Plays each Update's Reveal as a sequence of table frames. Returns the frame to show, or null
- * when the table should show the live snapshot.
+ * when the table should show the live snapshot. `summary` is the Round whose Round Summary is
+ * still open on the server: a Summary frame for any other Round has closed, so it is skipped.
  */
-export function useReveal(update: Update | null) {
+export function useReveal(update: Update | null, summary: number | null) {
   const [queue, setQueue] = useState<QueuedFrame[]>([]);
   const seen = useRef(update?.seq ?? 0);
 
@@ -36,23 +37,31 @@ export function useReveal(update: Update | null) {
     if (!update || update.seq <= seen.current) return;
     seen.current = update.seq;
     if (!update.before) return;
-    if (reducedMotion() || document.hidden) {
+    if (document.hidden) {
       summarySounds(update.events).forEach(playSound);
       return;
     }
     const { seq } = update;
-    const frames = revealFrames(update.before, update.events).map((f) => ({ ...f, seq }));
+    let frames = revealFrames(update.before, update.events).map((f) => ({ ...f, seq }));
+    // Without motion only the Round Summary shows, as it waits for the Players to tap Continue.
+    if (reducedMotion()) {
+      summarySounds(update.events).forEach(playSound);
+      frames = frames.filter((f) => f.table.roundEnded);
+    }
     if (frames.length > 0)
       setQueue((q) => (q.length + frames.length > MAX_QUEUE ? frames : [...q, ...frames]));
   }, [update]);
 
   const frame = queue[0] ?? null;
+  const closed = !!frame?.table.roundEnded && frame.table.roundEnded.round !== summary;
   useEffect(() => {
     if (!frame) return;
+    const next = () => setQueue((q) => (q[0] === frame ? q.slice(1) : q));
+    if (closed) return next();
     if (frame.sound) playSound(frame.sound);
-    const timer = setTimeout(() => setQueue((q) => (q[0] === frame ? q.slice(1) : q)), frame.ms);
+    const timer = setTimeout(next, frame.ms);
     return () => clearTimeout(timer);
-  }, [frame]);
+  }, [frame, closed]);
 
   return frame;
 }

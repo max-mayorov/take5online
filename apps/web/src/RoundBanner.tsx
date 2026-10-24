@@ -7,15 +7,23 @@ interface Props {
   end: RoundEnd;
   scores: number[];
   name: (seat: number) => string;
+  /** Whether the Seat's Player has tapped Continue. */
+  ready: (seat: number) => boolean;
+  /** The viewer's Seat, or null for a Spectator, who has nothing to tap. */
+  you: number | null;
+  onContinue: () => void;
 }
 
-/** Shown over the Board between Rounds: what each Seat Took in the Round that just ended. */
-export function RoundBanner({ end, scores, name }: Props) {
-  // The prompt and the log already announce the Round's end; the Seat strip holds the Scores.
+/**
+ * The Round Summary, over the Board between Rounds: what each Seat Took in the Round that just
+ * ended. It closes once every Player taps Continue, or when its time runs out.
+ */
+export function RoundBanner({ end, scores, name, ready, you, onContinue }: Props) {
+  const done = you !== null && ready(you);
   return (
-    <div
+    <section
       className="round-banner"
-      aria-hidden="true"
+      aria-label={t.roundBanner(end.round)}
       style={{ '--banner-ms': `${TIMING.roundEnded}ms` } as CSSProperties}
     >
       <div className="round-banner-card">
@@ -29,11 +37,20 @@ export function RoundBanner({ end, scores, name }: Props) {
                 <BullIcon />
               </span>
               <span className="muted">{t.totalScore(scores[seat]!)}</span>
+              <span className="picked-mark" aria-label={ready(seat) ? t.ready : undefined}>
+                {ready(seat) ? t.pickedMark : ''}
+              </span>
             </li>
           ))}
         </ul>
         {end.next !== null && <p className="round-banner-next">{t.nextRound(end.next)}</p>}
+        {you !== null && (
+          <button className="primary round-banner-continue" disabled={done} onClick={onContinue}>
+            {done ? t.waitingForOthers : t.continue}
+          </button>
+        )}
+        <div className="round-banner-time" aria-hidden="true" />
       </div>
-    </div>
+    </section>
   );
 }

@@ -196,7 +196,13 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
     while a Reveal is still showing; Row choices wait for the animation to finish.
   - A Low Card pause is the live snapshot itself: the waiting Cards stay in the tray, the Low Card and the
     choosing Seat are marked, and the Rows pulse for the chooser.
-  - `prefers-reduced-motion` (and a hidden tab) skips the frames and plays at most one sound.
+  - The Reveal that ends a Round ends on the **Round Summary**: a banner over the dimmed Board with each
+    Seat's Bull-heads for the Round and its Score, for up to 8 s (`TIMING.roundEnded`). Each Player can
+    tap Continue (`continue`); once every connected Player has, the server closes it (`summary` in the
+    Room) and the next decision starts at once, so `turnStarted` comes early. Clients drop a Summary
+    frame as soon as the snapshot no longer shows that Round's Summary open.
+  - `prefers-reduced-motion` skips every frame but the Round Summary, which shows without animation so
+    those Players can tap Continue too. A hidden tab skips them all. Either plays at most one sound.
 - **Emoji reactions**: a small fixed set, shown floating over the sender's Seat (or their name in the
   Lobby or the Spectator list) for 2.5 s; rate-limited.
 - A **Rules** link to the 6 nimmt! article on English Wikipedia, on the home page and in the Room header.
