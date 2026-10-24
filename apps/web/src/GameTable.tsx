@@ -9,7 +9,7 @@ import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
 import { tableFrom, type Frame } from './reveal';
 import { SeatStrip } from './SeatStrip';
-import { t, tControls } from './strings';
+import { t } from './strings';
 import { TakeFlight } from './TakeFlight';
 
 interface Props {
@@ -30,7 +30,6 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
   // While the Reveal that ends a Round plays, the next Round's Hand waits.
   const nextDealt = table.round !== game.round;
   const mySeat = game.seat;
-  const isHost = view.hostId === view.you;
   const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
 
   let prompt: string;
@@ -46,16 +45,6 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
     <section className={`table ${iMustChoose ? 'must-choose' : ''}`}>
       <div className="table-top">
         <span className="muted">{t.round(table.round, table.turn)}</span>
-        {isHost && (
-          <label className="row animate-toggle muted">
-            <input
-              type="checkbox"
-              checked={view.settings.animateCards}
-              onChange={(e) => send({ type: 'settings', animateCards: e.target.checked })}
-            />
-            {tControls.animateCardsShort}
-          </label>
-        )}
       </div>
 
       <div className="table-seats">
@@ -105,7 +94,7 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
       )}
 
       <TakeFlight flight={table.flight} />
-      <PlaceFlight table={table} enabled={view.settings.animateCards} />
+      <PlaceFlight table={table} />
     </section>
   );
 }

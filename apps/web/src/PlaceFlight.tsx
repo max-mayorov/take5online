@@ -29,10 +29,10 @@ function restingRect(el: HTMLElement): DOMRect {
  * same way a Taken Row flies into a Penalty Pile: from the tray to its slot, or to the end of the
  * Row it Takes and then into the Row's first slot. The real Card stays hidden until it lands.
  */
-export function PlaceFlight({ table, enabled }: { table: TableState; enabled: boolean }) {
+export function PlaceFlight({ table }: { table: TableState }) {
   const layer = useRef<HTMLDivElement>(null);
   const last = useRef(new Map<Card, DOMRect>());
-  const landed = enabled ? (table.taking ?? table.placed) : null;
+  const landed = table.taking ?? table.placed;
 
   useLayoutEffect(() => {
     const from = landed && last.current.get(landed.card);

@@ -111,61 +111,6 @@ test('a Reveal animates and finishes by itself', async ({ browser }) => {
   }
 });
 
-test('the host can switch card animation for the whole room, even mid-game', async ({
-  browser,
-}) => {
-  const [max, sam] = await friends(browser, { reducedMotion: 'no-preference' });
-  const animate = max.getByLabel('Animate cards flying to their rows');
-  await expect(animate).toBeChecked();
-  await animate.click();
-  await expect(animate).not.toBeChecked();
-  await expect(sam.getByText('Card animation is off.')).toBeVisible();
-  await max.getByRole('button', { name: 'Start game' }).click();
-
-  // Note any Card that flies while the first Turn is Revealed.
-  const watchFlights = (page: Page) =>
-    page.evaluate(() => {
-      const w = window as unknown as { flew: boolean };
-      w.flew = false;
-      new MutationObserver(() => {
-        w.flew ||= document.querySelector('.flight .flyer') !== null;
-      }).observe(document.body, { childList: true, subtree: true });
-    });
-  await Promise.all([max, sam].map(watchFlights));
-
-  await pickFirst(max, 'last');
-  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
-  await pickFirst(sam, 'last');
-
-  // The Reveal still plays, but Cards appear in their slots without flying there.
-  await Promise.all(
-    [max, sam].map(async (page) => {
-      await expect(page.getByText('Revealing…')).toBeVisible();
-      await expect(page.getByText('Revealing…')).toHaveCount(0, { timeout: 10_000 });
-      expect(await page.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(false);
-    }),
-  );
-
-  // Even the highest Card can be a Low Card; then its Player Takes a Row before the next Turn.
-  await chooseRowIfAsked([max, sam]);
-  await expect(max.locator('.hand .card-button:not(:disabled)').first()).toBeVisible();
-
-  // Only the Host can switch it back on mid-Game, and the next Turn's Cards fly for everyone.
-  await expect(sam.getByLabel('Animate cards', { exact: true })).toHaveCount(0);
-  const midGame = max.getByLabel('Animate cards', { exact: true });
-  await expect(midGame).not.toBeChecked();
-  await midGame.click();
-  await expect(midGame).toBeChecked();
-  await Promise.all([max, sam].map(watchFlights));
-  await pickFirst(max, 'last');
-  await expect(sam.locator('.seat', { hasText: 'Max' }).getByText('picked')).toBeAttached();
-  await pickFirst(sam, 'last');
-  await expect(async () => {
-    await chooseRowIfAsked([max, sam]);
-    expect(await sam.evaluate(() => (window as unknown as { flew: boolean }).flew)).toBe(true);
-  }).toPass({ timeout: 15_000 });
-});
-
 test('the rules are a click away on Wikipedia, here and in every room', async ({ page }) => {
   await page.goto('/');
   const rules = page.getByRole('link', { name: /Rules of 6 nimmt!/ });

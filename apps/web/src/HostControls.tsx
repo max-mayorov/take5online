@@ -7,7 +7,7 @@ import {
 } from '@take5/protocol';
 import { tControls } from './strings';
 
-/** The Host's Lobby settings beyond the End Score: the Pick Timer, card animation and seating Bots. */
+/** The Host's Lobby settings beyond the End Score: the Pick Timer and seating Bots. */
 export function HostControls({
   view,
   send,
@@ -31,14 +31,6 @@ export function HostControls({
             </option>
           ))}
         </select>
-      </label>
-      <label className="row">
-        <input
-          type="checkbox"
-          checked={view.settings.animateCards}
-          onChange={(e) => send({ type: 'settings', animateCards: e.target.checked })}
-        />
-        {tControls.animateCards}
       </label>
       <button
         className="add-bot"
