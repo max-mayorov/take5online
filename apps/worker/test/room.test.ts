@@ -90,18 +90,6 @@ describe('lobby', () => {
     expect(room.settings.endScore).toBe(30);
   });
 
-  it('flies Cards to their Rows unless the Host turns it off for the Room', () => {
-    const { room, members } = roomWith('Max', 'Sam');
-    expect(room.settings.animateCards).toBe(true);
-    expect(changeSettings(room, members[1]!, { animateCards: false })).toEqual({
-      ok: false,
-      error: 'not_host',
-    });
-    changeSettings(room, members[0]!, { animateCards: false });
-    expect(room.settings).toEqual({ endScore: 66, pickTimer: 0, animateCards: false });
-    expect(roomView(room, members[1]!, new Set(), 0).settings.animateCards).toBe(false);
-  });
-
   it('needs two seated Players to start', () => {
     const { room, members } = roomWith('Max');
     expect(start(room, members[0]!, 1)).toEqual({ ok: false, error: 'need_players' });
@@ -126,22 +114,6 @@ describe('a Game', () => {
       error: 'game_in_progress',
     });
     expect(addBot(room, members[0]!)).toEqual({ ok: false, error: 'game_in_progress' });
-  });
-
-  it('lets the Host switch card animation, but nothing else, while running', () => {
-    const { room, members } = roomWith('Max', 'Sam');
-    start(room, members[0]!, 1);
-    expect(changeSettings(room, members[0]!, { animateCards: false })).toMatchObject({ ok: true });
-    expect(room.settings.animateCards).toBe(false);
-    expect(changeSettings(room, members[1]!, { animateCards: true })).toEqual({
-      ok: false,
-      error: 'not_host',
-    });
-    expect(changeSettings(room, members[0]!, { animateCards: true, pickTimer: 30 })).toEqual({
-      ok: false,
-      error: 'game_in_progress',
-    });
-    expect(room.settings).toEqual({ endScore: 66, pickTimer: 0, animateCards: false });
   });
 
   it('rejects moves from people without a Seat', () => {
@@ -492,7 +464,7 @@ describe('Pick Timer', () => {
     expect(nextWakeup(room, 0)).toBe(room.lastActivity + ROOM_TTL_MS);
     playOut(room);
     changeSettings(room, members[0]!, { pickTimer: 60 });
-    expect(room.settings).toEqual({ endScore: 66, pickTimer: 60, animateCards: true });
+    expect(room.settings).toEqual({ endScore: 66, pickTimer: 60 });
     changeSettings(room, members[0]!, { pickTimer: 30 });
     expect(room.settings.pickTimer).toBe(30);
   });
@@ -642,11 +614,11 @@ describe('presence', () => {
     delete old.revealEnds;
     old.deadline = null;
     (old.settings as Record<string, unknown>).pickTimer = undefined;
-    delete (old.settings as Record<string, unknown>).animateCards;
+    (old.settings as Record<string, unknown>).animateCards = false;
     for (const m of old.members as Record<string, unknown>[]) delete m.bot;
     const upgraded = upgradeRoom(old as unknown as RoomData);
     expect(upgraded.settings.pickTimer).toBe(0);
-    expect(upgraded.settings.animateCards).toBe(true);
+    expect('animateCards' in upgraded.settings).toBe(false);
     expect(upgraded.members[0]!.bot).toBe(false);
     expect(upgraded.awaySince).toEqual({});
     expect(upgraded.decision).toBeNull();

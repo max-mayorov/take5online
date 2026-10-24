@@ -29,7 +29,8 @@ pnpm dev:worker     # Worker + Durable Objects + built app on http://localhost:8
 pnpm dev:web        # optional: Vite with hot reload on :5173, proxying /api and /ws to :8787
 ```
 
-Checks (CI runs all of these):
+Checks (CI runs all of these, but skips `pnpm e2e` on pull requests because it is slow, so run it
+locally before committing):
 
 ```sh
 pnpm format:check && pnpm typecheck && pnpm test && pnpm e2e

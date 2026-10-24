@@ -623,11 +623,6 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.animate-toggle {
-  margin-left: auto;
-  gap: 0.35rem;
-}
-
 .table-seats {
   grid-area: seats;
 }

@@ -22,8 +22,6 @@ export const MAX_END_SCORE = 200;
 export const PICK_TIMER_OPTIONS = [0, 30, 60] as const;
 export type PickTimer = (typeof PICK_TIMER_OPTIONS)[number];
 export const DEFAULT_PICK_TIMER: PickTimer = 0;
-/** Whether Cards fly from the tray to their Rows during a Reveal. */
-export const DEFAULT_ANIMATE_CARDS = true;
 
 /** The fixed set of emoji a member may react with. */
 export const REACTIONS = ['👍', '😂', '😱', '🐮', '🎉', '😭'] as const;
@@ -67,16 +65,12 @@ export const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ v, type: z.literal('sit') }),
   z.object({ v, type: z.literal('stand') }),
   z.object({ v, type: z.literal('leave') }),
-  /**
-   * Host only. End Score and Pick Timer only outside a Game; card animation at any time.
-   * Any field may be left out to keep it as it is.
-   */
+  /** Host only, outside a Game. Any field may be left out to keep it as it is. */
   z.object({
     v,
     type: z.literal('settings'),
     endScore: z.optional(int(MIN_END_SCORE, MAX_END_SCORE)),
     pickTimer: z.optional(pickTimer),
-    animateCards: z.optional(z.boolean()),
   }),
   z.object({ v, type: z.literal('start') }),
   z.object({ v, type: z.literal('pick'), card }),
@@ -194,7 +188,6 @@ export interface SessionTotal {
 export interface RoomSettings {
   endScore: number;
   pickTimer: PickTimer;
-  animateCards: boolean;
 }
 
 /** Everything one connection may see of a Room. */
@@ -305,7 +298,7 @@ const roomViewSchema: z.ZodMiniType<RoomView> = z.object({
     }),
   ),
   seats: z.array(z.string()),
-  settings: z.object({ endScore: count, pickTimer, animateCards: z.boolean() }),
+  settings: z.object({ endScore: count, pickTimer }),
   game: z.nullable(gameViewSchema),
   gameSeats: z.array(z.object({ memberId: z.string(), nickname: z.string(), bot: z.boolean() })),
   totals: z.array(
