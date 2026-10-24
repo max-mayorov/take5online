@@ -89,6 +89,22 @@ describe('revealFrames', () => {
     throw new Error('no Take found');
   });
 
+  it("shows each Seat's Bull-heads for the Round when it ends", () => {
+    let roundStart: number[] | null = null;
+    let checked = 0;
+    for (const { before, events } of steps(4, 4)) {
+      roundStart ??= [...before.scores];
+      const ended = events.find((e) => e.type === 'roundEnded');
+      if (ended?.type !== 'roundEnded') continue;
+      const frames = revealFrames(viewFor(before, 0), events);
+      const end = frames[frames.length - 1]!.table.roundEnded!;
+      expect(end.points).toEqual(ended.scores.map((score, seat) => score - roundStart![seat]!));
+      roundStart = [...ended.scores];
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(1);
+  });
+
   it('always ends on the next snapshot, across whole Games', () => {
     let checked = 0;
     for (const seed of [1, 2, 3, 4, 5]) {
@@ -103,7 +119,10 @@ describe('revealFrames', () => {
         const live = tableFrom(viewFor(after, viewer));
         expect(last.scores).toEqual(live.scores);
         if (events.some((e) => e.type === 'roundEnded')) {
-          expect(last.roundEnded).toBe(before.round);
+          expect(last.roundEnded).toMatchObject({
+            round: before.round,
+            next: after.phase === 'gameOver' ? null : before.round + 1,
+          });
           expect(last.tray).toEqual([]);
           // The next Round's Hand waits until the Reveal has played.
           expect(frames.every((f) => f.table.round === before.round)).toBe(true);

@@ -7,6 +7,7 @@ import { Hand } from './Hand';
 import { PlaceFlight } from './PlaceFlight';
 import { Floaters } from './Reactions';
 import { RevealTray } from './RevealTray';
+import { RoundBanner } from './RoundBanner';
 import { tableFrom, type Frame } from './reveal';
 import { SeatStrip } from './SeatStrip';
 import { t } from './strings';
@@ -33,7 +34,7 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
   const iMustChoose = !animating && game.phase === 'choosingRow' && game.choosingSeat === mySeat;
 
   let prompt: string;
-  if (animating) prompt = table.roundEnded ? t.roundOver(table.roundEnded) : t.revealing;
+  if (animating) prompt = table.roundEnded ? t.roundOver(table.roundEnded.round) : t.revealing;
   else if (mySeat === null) prompt = t.spectating;
   else if (iMustChoose) prompt = t.chooseRowPrompt(game.unplaced[0]!.card);
   else if (game.phase === 'choosingRow') prompt = t.othersChoosing(name(game.choosingSeat!));
@@ -70,6 +71,7 @@ export function GameTable({ view, game, frame, reactions, send, onLeave }: Props
         choosable={iMustChoose}
         onChoose={(row) => send({ type: 'chooseRow', row })}
       />
+      {table.roundEnded && <RoundBanner end={table.roundEnded} scores={table.scores} name={name} />}
 
       <div className="status">
         <RevealTray
