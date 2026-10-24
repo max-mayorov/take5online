@@ -11,7 +11,6 @@ import {
   type GameState,
 } from '@take5/engine';
 import {
-  DEFAULT_ANIMATE_CARDS,
   DEFAULT_END_SCORE,
   DEFAULT_PICK_TIMER,
   MAX_SPECTATORS,
@@ -76,11 +75,7 @@ export function createRoom(code: string, now: number): RoomData {
     hostId: null,
     members: [],
     seats: [],
-    settings: {
-      endScore: DEFAULT_END_SCORE,
-      pickTimer: DEFAULT_PICK_TIMER,
-      animateCards: DEFAULT_ANIMATE_CARDS,
-    },
+    settings: { endScore: DEFAULT_END_SCORE, pickTimer: DEFAULT_PICK_TIMER },
     phase: 'lobby',
     game: null,
     gameSeats: [],
@@ -95,9 +90,8 @@ export function createRoom(code: string, now: number): RoomData {
 export function upgradeRoom(stored: RoomData): RoomData {
   const room: RoomData = { ...stored };
   room.settings = {
-    ...room.settings,
+    endScore: room.settings.endScore,
     pickTimer: room.settings.pickTimer ?? DEFAULT_PICK_TIMER,
-    animateCards: room.settings.animateCards ?? DEFAULT_ANIMATE_CARDS,
   };
   room.members = room.members.map((m) => ({ ...m, bot: m.bot ?? false }));
   room.gameSeats = room.gameSeats.map((s) => ({ ...s, bot: s.bot ?? false }));
@@ -162,7 +156,7 @@ export function leave(room: RoomData, memberId: string): RoomResult {
   return ok();
 }
 
-/** Host only: changes the settings for the next Game, and card animation at any time. */
+/** Host only: changes the settings for the next Game. */
 export function changeSettings(
   room: RoomData,
   memberId: string,
@@ -173,7 +167,6 @@ export function changeSettings(
   if (forNextGame && room.phase === 'game') return fail('game_in_progress');
   if (settings.endScore !== undefined) room.settings.endScore = settings.endScore;
   if (settings.pickTimer !== undefined) room.settings.pickTimer = settings.pickTimer;
-  if (settings.animateCards !== undefined) room.settings.animateCards = settings.animateCards;
   return ok();
 }
 

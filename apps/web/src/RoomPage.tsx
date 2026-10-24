@@ -233,7 +233,7 @@ function Lobby({ room, view }: { room: Room; view: RoomView }) {
       ) : (
         <p className="muted">
           {t.endScore} {view.settings.endScore}. {tControls.pickTimerNote(view.settings.pickTimer)}{' '}
-          {tControls.animateCardsNote(view.settings.animateCards)} {t.waitingForHost}
+          {t.waitingForHost}
         </p>
       )}
     </section>

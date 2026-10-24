@@ -85,7 +85,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 
 - The server shuffles, deals, validates and resolves everything. Clients only send _intents_
   (`pick {card}`, `chooseRow {row}`, `react {emoji}`, `takeSeat {seat}`, and the Host's
-  `settings {endScore?, pickTimer?, animateCards?}`, `addBot`, `removeBot {memberId}`, `kick {memberId}`,
+  `settings {endScore?, pickTimer?}`, `addBot`, `removeBot {memberId}`, `kick {memberId}`,
   `replaceWithBot {memberId}`). See
   [ADR-0005](./adr/0005-authoritative-redacted-snapshots.md).
 - After every change the server sends each connection a **full snapshot redacted to what that
@@ -117,7 +117,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
 ## Room lifecycle
 
 1. **Lobby**: the creator is Host. People take Seats (max 10) or spectate (max 20). Host sets
-   End Score, Pick Timer and card animation, may add Bots, kick people, then presses Start (needs ≥ 2 Seats).
+   End Score and Pick Timer, may add Bots, kick people, then presses Start (needs ≥ 2 Seats).
 2. **Game**: Rounds and Turns as per the rules. People arriving mid-Game become Spectators, or may take over a Bot's Seat.
 3. **Results**: final Scores, winner(s), and **Session Totals** across all Games in this Room. Host can start a **Rematch**.
 
@@ -178,9 +178,7 @@ See [ADR-0004](./adr/0004-pure-shared-engine.md).
   (~600 ms each), Takes animated into the Penalty Pile.
   - Each Placed Card flies from the tray to its slot in ~350 ms, the way a Taken Row flies into a Penalty
     Pile (`apps/web/src/PlaceFlight.tsx`): a copy flies over the table while the real Card stays hidden
-    until it lands. A Card that Takes a Row flies to the Row's end first, then into its first slot. This
-    is a Room setting (`animateCards`, on by default) that the Host can switch in the Lobby or, unlike the
-    other settings, mid-Game from the table's top bar; with it off, Cards appear in place.
+    until it lands. A Card that Takes a Row flies to the Row's end first, then into its first slot.
   - How: the client keeps the previous snapshot and, when a `state` message carries events, turns
     (previous Game view, events) into a list of table frames with a pure function (`apps/web/src/reveal.ts`,
     unit-tested against whole engine Games so the frames always end on the next snapshot). Frames play in

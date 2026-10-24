@@ -124,9 +124,6 @@ export const tControls = {
   pickTimerOption: (seconds: number) => (seconds === 0 ? 'Off' : `${seconds} seconds`),
   pickTimerNote: (seconds: number) =>
     seconds === 0 ? 'No pick timer.' : `${seconds} seconds per pick.`,
-  animateCards: 'Animate cards flying to their rows',
-  animateCardsShort: 'Animate cards',
-  animateCardsNote: (on: boolean) => (on ? '' : 'Card animation is off.'),
   addBot: 'Add a bot',
   removeBot: 'Remove bot',
   kick: 'Kick',
