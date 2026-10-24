@@ -95,7 +95,11 @@ describe('serverMessageSchema', () => {
         deadline: 1_700_000_060_000,
         now: 1_700_000_000_000,
       },
-      events,
+      events: [
+        ...events,
+        { type: 'turnStarted', round: 1, turn: 1 },
+        { type: 'rowChoiceStarted', seat: 1, card: 4 },
+      ],
     };
     expect(serverMessageSchema.parse(JSON.parse(JSON.stringify(message)))).toEqual(message);
   });

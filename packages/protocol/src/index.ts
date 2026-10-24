@@ -1,8 +1,15 @@
-import { DECK_SIZE, MAX_SEATS, ROW_COUNT, type GameEvent, type GameView } from '@take5/engine';
+import {
+  DECK_SIZE,
+  MAX_SEATS,
+  ROW_COUNT,
+  type Card,
+  type GameEvent,
+  type GameView,
+} from '@take5/engine';
 import * as z from 'zod/mini';
 
 /** Bump on any incompatible message change; clients on another version are told to reload. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export const ROOM_CODE_LENGTH = 4;
@@ -92,6 +99,64 @@ export type ClientIntent = ClientMessage extends infer M
 
 // ---------------------------------------------------------------------------
 // Server → client
+
+/**
+ * A Game event, or one of the Room's signals that a decision has started: the Reveal that led
+ * to it has finished playing, so the Pick Timer and the Bots' thinking count from here.
+ */
+export type RoomEvent =
+  | GameEvent
+  | { type: 'turnStarted'; round: number; turn: number }
+  | { type: 'rowChoiceStarted'; seat: number; card: Card };
+
+/** How long each Reveal step shows, in ms. */
+export const TIMING = {
+  faceDown: 350,
+  flip: 900,
+  sort: 800,
+  place: 600,
+  taking: 700,
+  take: 800,
+  roundEnded: 1600,
+} as const;
+
+/** Whether these events change the table in a way worth animating. */
+export function isAnimated(events: readonly RoomEvent[]): boolean {
+  return events.some((e) => e.type === 'revealed' || e.type === 'cardPlaced');
+}
+
+/** How long the Reveal of these events plays on the clients; the sum of its steps' TIMING. */
+export function revealMs(events: readonly RoomEvent[]): number {
+  if (!isAnimated(events)) return 0;
+  let ms = 0;
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i]!;
+    switch (event.type) {
+      case 'revealed': {
+        const bySeat = [...event.cards].sort((a, b) => a.seat - b.seat);
+        const ascending = [...event.cards].sort((a, b) => a.card - b.card);
+        ms += TIMING.faceDown + TIMING.flip;
+        if (ascending.some((p, i) => p.seat !== bySeat[i]!.seat)) ms += TIMING.sort;
+        break;
+      }
+      case 'rowTaken':
+        // A Take shows together with the Card that starts the Row afresh.
+        if (events[i + 1]?.type !== 'cardPlaced') break;
+        i++;
+        ms += TIMING.taking + TIMING.take;
+        break;
+      case 'cardPlaced':
+        ms += TIMING.place;
+        break;
+      case 'roundEnded':
+        ms += TIMING.roundEnded;
+        break;
+      default:
+        break;
+    }
+  }
+  return ms;
+}
 
 export type RoomPhase = 'lobby' | 'game' | 'results';
 
@@ -195,7 +260,7 @@ const gameViewSchema: z.ZodMiniType<GameView> = z.object({
   pick: z.nullable(card),
 });
 
-const gameEventSchema: z.ZodMiniType<GameEvent> = z.discriminatedUnion('type', [
+const roomEventSchema: z.ZodMiniType<RoomEvent> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('roundStarted'), round: count, board }),
   z.object({ type: z.literal('picked'), seat }),
   z.object({ type: z.literal('revealed'), cards: z.array(playedCard) }),
@@ -214,6 +279,8 @@ const gameEventSchema: z.ZodMiniType<GameEvent> = z.discriminatedUnion('type', [
     scores: z.array(z.number()),
     winners: z.array(seat),
   }),
+  z.object({ type: z.literal('turnStarted'), round: count, turn: count }),
+  z.object({ type: z.literal('rowChoiceStarted'), seat, card }),
 ]);
 
 const roomViewSchema: z.ZodMiniType<RoomView> = z.object({
@@ -252,7 +319,7 @@ export const serverMessageSchema = z.discriminatedUnion('type', [
   /** Sent once a hello succeeds: the token to store for reclaiming this place. */
   z.object({ v, type: z.literal('welcome'), memberId: z.string(), token: z.string() }),
   /** A fresh snapshot after every change, plus public events to animate. */
-  z.object({ v, type: z.literal('state'), room: roomViewSchema, events: z.array(gameEventSchema) }),
+  z.object({ v, type: z.literal('state'), room: roomViewSchema, events: z.array(roomEventSchema) }),
   /** Someone in the Room reacted; shown briefly and never stored. */
   z.object({ v, type: z.literal('reaction'), memberId: z.string(), emoji: z.enum(REACTIONS) }),
   z.object({ v, type: z.literal('error'), code: z.enum(ERROR_CODES) }),
