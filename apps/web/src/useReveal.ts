@@ -1,4 +1,5 @@
-import type { GameEvent, GameView } from '@take5/engine';
+import type { GameView } from '@take5/engine';
+import type { RoomEvent } from '@take5/protocol';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { revealFrames, summarySounds, type Frame } from './reveal';
 import { playSound } from './sound';
@@ -7,7 +8,7 @@ import { playSound } from './sound';
 export interface Update {
   seq: number;
   before: GameView | null;
-  events: GameEvent[];
+  events: RoomEvent[];
 }
 
 /** A Reveal step, with the Update it shows. */

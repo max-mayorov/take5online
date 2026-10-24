@@ -1,5 +1,4 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { GameEvent } from '@take5/engine';
 import {
   clientMessageSchema,
   messageVersion,
@@ -10,6 +9,7 @@ import {
   type ClientMessage,
   type ErrorCode,
   type Reaction,
+  type RoomEvent,
   type ServerMessage,
 } from '@take5/protocol';
 import {
@@ -196,9 +196,9 @@ export class RoomObject extends DurableObject<Env> {
       case 'start':
         return start(room, memberId, randomSeed());
       case 'pick':
-        return play(room, memberId, { type: 'pick', card: message.card });
+        return play(room, memberId, { type: 'pick', card: message.card }, Date.now());
       case 'chooseRow':
-        return play(room, memberId, { type: 'chooseRow', row: message.row });
+        return play(room, memberId, { type: 'chooseRow', row: message.row }, Date.now());
       case 'addBot':
         return addBot(room, memberId);
       case 'removeBot':
@@ -219,7 +219,7 @@ export class RoomObject extends DurableObject<Env> {
    * After any change: records who is connected, lets timers and Bots do what is due,
    * persists the Room, re-arms the alarm and sends everyone a fresh snapshot.
    */
-  private async commit(events: GameEvent[], closing?: WebSocket): Promise<void> {
+  private async commit(events: RoomEvent[], closing?: WebSocket): Promise<void> {
     const room = this.room;
     if (!room) return;
     const now = Date.now();
@@ -240,7 +240,7 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   /** Sends every identified connection its own snapshot plus the public events. */
-  private broadcast(events: GameEvent[], now: number, closing?: WebSocket): void {
+  private broadcast(events: RoomEvent[], now: number, closing?: WebSocket): void {
     const room = this.room;
     if (!room) return;
     const connected = this.connected(closing);

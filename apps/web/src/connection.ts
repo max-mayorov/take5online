@@ -1,10 +1,10 @@
-import type { GameEvent } from '@take5/engine';
 import {
   PROTOCOL_VERSION,
   serverMessageSchema,
   type ClientIntent,
   type ErrorCode,
   type Reaction,
+  type RoomEvent,
   type RoomView,
 } from '@take5/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -32,7 +32,7 @@ export interface RoomConnection {
 
 export interface LoggedEvent {
   seq: number;
-  event: GameEvent;
+  event: RoomEvent;
 }
 
 export interface ReactionShown {

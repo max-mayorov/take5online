@@ -460,14 +460,17 @@ function roomOf(instance: RoomObject): RoomData {
   return (instance as unknown as { room: RoomData }).room;
 }
 
-/** Pretends the current decision began long enough ago for every Bot Seat, and fires the alarm. */
+/**
+ * Pretends the current decision began (its Reveal played) long enough ago for every Bot Seat,
+ * and fires the alarm.
+ */
 async function skipBotThinking(stub: DurableObjectStub<RoomObject>, client: Client): Promise<Room> {
   await runInDurableObject(stub, async (instance: RoomObject, state) => {
     const data = roomOf(instance);
     expect(await state.storage.getAlarm()).toBeLessThanOrEqual(
       data.decision!.since + BOT_DELAY_MAX_MS,
     );
-    data.decision!.since -= BOT_DELAY_MAX_MS;
+    data.decision!.since = Math.min(data.decision!.since, Date.now()) - BOT_DELAY_MAX_MS;
   });
   const from = client.messages.length;
   expect(await runDurableObjectAlarm(stub)).toBe(true);

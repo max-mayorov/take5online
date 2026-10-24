@@ -1,4 +1,7 @@
-import type { Card, GameEvent, GameView } from '@take5/engine';
+import type { Card, GameView } from '@take5/engine';
+import { isAnimated, TIMING, type RoomEvent } from '@take5/protocol';
+
+export { isAnimated, TIMING };
 
 export type Sound = 'flip' | 'place' | 'take';
 
@@ -41,16 +44,6 @@ export interface Frame {
   sound?: Sound;
 }
 
-export const TIMING = {
-  faceDown: 350,
-  flip: 900,
-  sort: 800,
-  place: 600,
-  taking: 700,
-  take: 800,
-  roundEnded: 1600,
-} as const;
-
 export function tableFrom(game: GameView): TableState {
   return {
     round: game.round,
@@ -73,16 +66,11 @@ export function tableFrom(game: GameView): TableState {
   };
 }
 
-/** Whether these events change the table in a way worth animating. */
-export function isAnimated(events: readonly GameEvent[]): boolean {
-  return events.some((e) => e.type === 'revealed' || e.type === 'cardPlaced');
-}
-
 /**
  * The steps that lead from the snapshot `before` through `events`. The last frame is not the
  * new snapshot itself: once the frames have played, the table shows the live snapshot again.
  */
-export function revealFrames(before: GameView, events: readonly GameEvent[]): Frame[] {
+export function revealFrames(before: GameView, events: readonly RoomEvent[]): Frame[] {
   if (!isAnimated(events)) return [];
   const frames: Frame[] = [];
   let table: TableState = { ...tableFrom(before), choosing: null };
@@ -155,7 +143,7 @@ export function revealFrames(before: GameView, events: readonly GameEvent[]): Fr
         push({ tray: [], roundEnded: event.round }, TIMING.roundEnded);
         break;
       default:
-        // Picks, the Low Card pause and the next deal show up in the live snapshot.
+        // Picks, the Low Card pause, the next deal and a decision's start show in the live snapshot.
         break;
     }
   }
@@ -163,7 +151,7 @@ export function revealFrames(before: GameView, events: readonly GameEvent[]): Fr
 }
 
 /** The sounds to play when a Reveal is shown without animation. */
-export function summarySounds(events: readonly GameEvent[]): Sound[] {
+export function summarySounds(events: readonly RoomEvent[]): Sound[] {
   if (!isAnimated(events)) return [];
   return events.some((e) => e.type === 'rowTaken') ? ['take'] : ['place'];
 }

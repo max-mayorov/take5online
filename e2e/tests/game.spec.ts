@@ -45,13 +45,14 @@ test('one person plays a whole game against a bot', async ({ browser }) => {
   await expect(page.getByRole('timer')).toHaveAccessibleName(/\d+ seconds left to pick/);
   await expect(page.locator('.seat.bot')).toContainText('Bot 1');
 
-  // The Bot thinks for a few seconds each Turn, so wait until it is Max's move each time.
+  // The Bot thinks for a few seconds each Turn, so wait until it is Max's move each time. It only
+  // starts once the Reveal has had time to play, even though reduced motion skips it here.
   const maxToMove = page
     .locator('.prompt', { hasText: /^Pick a card|Tap a row/ })
     .or(page.getByText('Game over'));
   for (let steps = 0; !(await page.getByText('Game over').isVisible()); steps++) {
     expect(steps).toBeLessThan(400);
-    await expect(maxToMove).toBeVisible({ timeout: 10_000 });
+    await expect(maxToMove).toBeVisible({ timeout: 20_000 });
     await act(page);
   }
   await expect(page.locator('.score-table').last()).toContainText('Bot 1');

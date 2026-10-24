@@ -6,6 +6,7 @@ import {
   type GameEvent,
   type GameState,
 } from '@take5/engine';
+import { revealMs } from '@take5/protocol';
 import { describe, expect, it } from 'vitest';
 import { isAnimated, revealFrames, summarySounds, tableFrom, TIMING } from '../src/reveal';
 
@@ -117,6 +118,8 @@ describe('revealFrames', () => {
           expect(last.tray).toEqual(live.tray);
         }
         expect(frames.every((f) => f.ms > 0)).toBe(true);
+        // The server waits exactly this long before the next decision starts.
+        expect(revealMs(events)).toBe(frames.reduce((ms, f) => ms + f.ms, 0));
         checked++;
       }
     }

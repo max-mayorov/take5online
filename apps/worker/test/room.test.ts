@@ -1,4 +1,5 @@
 import { cheapestRow, waitingOn } from '@take5/engine';
+import { revealMs } from '@take5/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   addBot,
@@ -148,7 +149,7 @@ describe('a Game', () => {
     start(room, members[0]!, 1);
     const spectator = join(room, 'Watcher', ids());
     if (!spectator.ok) throw new Error();
-    expect(play(room, spectator.member.id, { type: 'pick', card: 1 })).toEqual({
+    expect(play(room, spectator.member.id, { type: 'pick', card: 1 }, 0)).toEqual({
       ok: false,
       error: 'not_seated',
     });
@@ -258,8 +259,8 @@ describe('playing with Bots', () => {
         if (room.phase !== 'game' || !waitingOn(g).includes(0)) continue;
         const result =
           g.phase === 'choosingRow'
-            ? play(room, members[0]!, { type: 'chooseRow', row: 0 })
-            : play(room, members[0]!, { type: 'pick', card: g.hands[0]![0]! });
+            ? play(room, members[0]!, { type: 'chooseRow', row: 0 }, now)
+            : play(room, members[0]!, { type: 'pick', card: g.hands[0]![0]! }, now);
         expect(result).toMatchObject({ ok: true });
         tick(room, now);
       }
@@ -278,11 +279,11 @@ describe('playing with Bots', () => {
     expect(room.seats[1]).toBe(room.gameSeats[1]!.memberId);
     expect(room.members.map((m) => m.nickname)).toEqual(['Max', 'Bot 1']);
 
-    expect(tick(room, 0)).toEqual([]);
+    expect(tick(room, 0)).toEqual([{ type: 'turnStarted', round: 1, turn: 1 }]);
     expect(tick(room, BOT_DELAY_MAX_MS)).toEqual([{ type: 'picked', seat: 1 }]);
   });
 
-  it('lets a Bot Seat think for 1–2 seconds before each move', () => {
+  it('lets a Bot Seat think for a few seconds before each move', () => {
     const { room, members } = roomWith('Max');
     addBot(room, members[0]!);
     addBot(room, members[0]!);
@@ -299,6 +300,53 @@ describe('playing with Bots', () => {
       { type: 'picked', seat: 1 },
       { type: 'picked', seat: 2 },
     ]);
+  });
+
+  it('starts each decision, and the Bots’ thinking and Pick Timer, once its Reveal has played', () => {
+    const { room, members } = roomWith('Max');
+    for (let i = 0; i < 9; i++) addBot(room, members[0]!);
+    changeSettings(room, members[0]!, { pickTimer: 30 });
+    start(room, members[0]!, 3);
+    expect(tick(room, 1000)).toEqual([{ type: 'turnStarted', round: 1, turn: 1 }]);
+    tick(room, 1000 + BOT_DELAY_MAX_MS);
+    expect(waitingOn(room.game!)).toEqual([0]);
+
+    // Max's Pick completes the Turn; ten Cards take a while to Reveal and Place.
+    const at = 2000 + BOT_DELAY_MAX_MS;
+    const card = room.game!.hands[0]!.at(-1)!;
+    const result = play(room, members[0]!, { type: 'pick', card }, at);
+    if (!result.ok) throw new Error(result.error);
+    const since = at + revealMs(result.events);
+    expect(since - at).toBeGreaterThan(BOT_DELAY_MAX_MS);
+    expect(tick(room, at)).toEqual([]);
+    expect(room.decision).toMatchObject({ since, started: false });
+    expect(nextWakeup(room, at)).toBe(since);
+    expect(pickDeadline(room)).toBe(since + 30_000);
+
+    // Nobody moves for the Bots before the Reveal is over.
+    expect(tick(room, since - 1)).toEqual([]);
+    expect(tick(room, since)).toEqual([{ type: 'turnStarted', round: 1, turn: 2 }]);
+    expect(room.decision!.started).toBe(true);
+    expect(tick(room, since + BOT_DELAY_MIN_MS - 1)).toEqual([]);
+  });
+
+  it('queues Reveals that follow each other, as the clients play them', () => {
+    const { room, members } = roomWith('Max', 'Sam');
+    start(room, members[0]!, 1);
+    tick(room, 0);
+    const pick = (seat: number, now: number) =>
+      play(room, members[seat]!, { type: 'pick', card: room.game!.hands[seat]!.at(-1)! }, now);
+    pick(0, 0);
+    const first = pick(1, 0);
+    if (!first.ok) throw new Error(first.error);
+    expect(room.revealEnds).toBe(revealMs(first.events));
+    tick(room, 0);
+    expect(room.game!.phase).toBe('picking');
+    // Picks made while the first Reveal still plays: the second one queues behind it.
+    pick(0, 100);
+    const second = pick(1, 100);
+    if (!second.ok) throw new Error(second.error);
+    expect(room.revealEnds).toBe(revealMs(first.events) + revealMs(second.events));
   });
 
   it('derives Bot thinking time from the seed, varying by Seat and decision', () => {
@@ -334,7 +382,9 @@ describe('playing with Bots', () => {
     expect(room.members.some((m) => m.bot)).toBe(false);
     expect(roomView(room, late.member.id, new Set(), 0).game?.hand).toEqual(hand);
     // The Bot's Pick this Turn stands; Late may change it until the Reveal.
-    expect(play(room, late.member.id, { type: 'pick', card: hand![0]! })).toMatchObject({
+    expect(
+      play(room, late.member.id, { type: 'pick', card: hand![0]! }, BOT_DELAY_MAX_MS),
+    ).toMatchObject({
       ok: true,
     });
     expect(takeSeat(room, members[0]!, 1)).toEqual({ ok: false, error: 'invalid_target' });
@@ -459,7 +509,7 @@ describe('Pick Timer', () => {
     });
     expect(nextWakeup(room, 1000)).toBe(31_000);
 
-    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! }, 2000);
     expect(tick(room, 30_999)).toEqual([]);
     const events = tick(room, 31_000);
     expect(events.slice(0, 3)).toEqual([
@@ -467,8 +517,8 @@ describe('Pick Timer', () => {
       { type: 'picked', seat: 2 },
       expect.objectContaining({ type: 'revealed' }),
     ]);
-    // A fresh Pick Timer for the next decision.
-    expect(pickDeadline(room)).toBe(61_000);
+    // A fresh Pick Timer for the next decision, once its Reveal has played.
+    expect(pickDeadline(room)).toBe(31_000 + revealMs(events) + 30_000);
   });
 
   it('lets the Bot Take the cheapest Row when a Low Card choice runs out', () => {
@@ -480,18 +530,20 @@ describe('Pick Timer', () => {
       while (room.phase === 'game' && room.game!.phase === 'picking') {
         room.gameSeats.forEach(({ memberId }, seat) => {
           if (room.game!.phase === 'picking' && room.game!.picks[seat] === null) {
-            play(room, memberId, { type: 'pick', card: room.game!.hands[seat]![0]! });
+            play(room, memberId, { type: 'pick', card: room.game!.hands[seat]![0]! }, 0);
           }
         });
       }
       if (room.phase === 'game') break;
     }
-    const chooser = room.game!.unplaced[0]!.seat;
+    const { seat: chooser, card } = room.game!.unplaced[0]!;
     const cheapest = cheapestRow(room.game!.board);
-    tick(room, 5000);
-    expect(pickDeadline(room)).toBe(65_000);
-    expect(tick(room, 64_999)).toEqual([]);
-    const events = tick(room, 65_000);
+    // The choice starts once the Reveals so far have played.
+    const at = room.revealEnds;
+    expect(tick(room, at)).toEqual([{ type: 'rowChoiceStarted', seat: chooser, card }]);
+    expect(pickDeadline(room)).toBe(at + 60_000);
+    expect(tick(room, at + 59_999)).toEqual([]);
+    const events = tick(room, at + 60_000);
     expect(events[0]).toMatchObject({ type: 'rowTaken', seat: chooser, row: cheapest });
   });
 
@@ -502,7 +554,7 @@ describe('Pick Timer', () => {
     syncPresence(room, new Set([members[0]!]), 0);
     tick(room, 0);
     expect(nextWakeup(room, 0)).toBe(30_000);
-    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! }, 0);
     expect(tick(room, 29_999)).toEqual([]);
     expect(tick(room, 30_000)[0]).toEqual({ type: 'picked', seat: 1 });
   });
@@ -513,7 +565,7 @@ describe('Pick Timer', () => {
     start(room, members[0]!, 1);
     syncPresence(room, new Set([members[0]!]), 0);
     tick(room, 30_000);
-    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! }, 30_000);
     expect(pickDeadline(room)).toBe(90_000);
     expect(nextWakeup(room, 30_000)).toBe(GRACE_PERIOD_MS);
     expect(tick(room, GRACE_PERIOD_MS - 1)).toEqual([]);
@@ -532,19 +584,22 @@ describe('Away Players with the Pick Timer off', () => {
 
   it('waits the Grace Period, then lets the Bot act for them on every decision', () => {
     const { room, members } = awayGame();
-    expect(tick(room, 1000)).toEqual([]);
+    expect(tick(room, 1000)).toEqual([{ type: 'turnStarted', round: 1, turn: 1 }]);
     expect(pickDeadline(room)).toBeNull();
     expect(nextWakeup(room, 1000)).toBe(1000 + GRACE_PERIOD_MS);
     expect(tick(room, GRACE_PERIOD_MS)).toEqual([]);
     expect(tick(room, 1000 + GRACE_PERIOD_MS)).toEqual([{ type: 'picked', seat: 1 }]);
 
-    // From now on the Bot acts for Sam straight away, Turn after Turn.
+    // From now on the Bot acts for Sam as soon as each decision starts, Turn after Turn.
     const turn = room.game!.turn;
-    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! });
-    tick(room, 1000 + GRACE_PERIOD_MS);
+    let now = 1000 + GRACE_PERIOD_MS;
+    play(room, members[0]!, { type: 'pick', card: room.game!.hands[0]![0]! }, now);
+    now = room.revealEnds;
+    tick(room, now);
     if (room.game!.phase === 'choosingRow' && room.game!.unplaced[0]!.seat === 0) {
-      play(room, members[0]!, { type: 'chooseRow', row: 0 });
-      tick(room, 1000 + GRACE_PERIOD_MS);
+      play(room, members[0]!, { type: 'chooseRow', row: 0 }, now);
+      now = room.revealEnds;
+      tick(room, now);
     }
     expect(room.game!.turn).toBe(turn + 1);
     expect(room.game!.picks[1]).not.toBeNull();
@@ -553,7 +608,9 @@ describe('Away Players with the Pick Timer off', () => {
   it('stops when they come back', () => {
     const { room, members } = awayGame();
     syncPresence(room, new Set(members), 2000);
-    expect(tick(room, 1000 + GRACE_PERIOD_MS)).toEqual([]);
+    expect(tick(room, 1000 + GRACE_PERIOD_MS)).toEqual([
+      { type: 'turnStarted', round: 1, turn: 1 },
+    ]);
     expect(nextWakeup(room, 2000)).toBe(room.lastActivity + ROOM_TTL_MS);
   });
 
@@ -582,6 +639,7 @@ describe('presence', () => {
     const old = JSON.parse(JSON.stringify(room)) as Record<string, unknown>;
     delete old.awaySince;
     delete old.decision;
+    delete old.revealEnds;
     old.deadline = null;
     (old.settings as Record<string, unknown>).pickTimer = undefined;
     delete (old.settings as Record<string, unknown>).animateCards;
@@ -592,6 +650,7 @@ describe('presence', () => {
     expect(upgraded.members[0]!.bot).toBe(false);
     expect(upgraded.awaySince).toEqual({});
     expect(upgraded.decision).toBeNull();
+    expect(upgraded.revealEnds).toBe(0);
     expect('deadline' in upgraded).toBe(false);
   });
 });
@@ -603,9 +662,9 @@ function playOut(room: RoomData): void {
     room.gameSeats.forEach(({ memberId }, seat) => {
       if (room.phase !== 'game') return;
       if (room.game!.phase === 'choosingRow' && room.game!.unplaced[0]?.seat === seat) {
-        play(room, memberId, { type: 'chooseRow', row: 0 });
+        play(room, memberId, { type: 'chooseRow', row: 0 }, 0);
       } else if (room.game!.phase === 'picking' && room.game!.picks[seat] === null) {
-        play(room, memberId, { type: 'pick', card: room.game!.hands[seat]![0]! });
+        play(room, memberId, { type: 'pick', card: room.game!.hands[seat]![0]! }, 0);
       }
     });
     if (room.game === game) throw new Error('no progress');

@@ -7,7 +7,6 @@ import {
   viewFor,
   waitingOn,
   type Action,
-  type GameEvent,
   type GameState,
 } from '@take5/engine';
 import {
@@ -15,10 +14,12 @@ import {
   DEFAULT_END_SCORE,
   DEFAULT_PICK_TIMER,
   MAX_SPECTATORS,
+  revealMs,
   type ErrorCode,
   type GameSeatView,
   type RoomPhase,
   type RoomSettings,
+  type RoomEvent,
   type RoomView,
   type SessionTotal,
 } from '@take5/protocol';
@@ -40,10 +41,15 @@ export interface Member {
   bot: boolean;
 }
 
-/** The decision the Game is waiting on (a Turn's Picks, or one Low Card's Row) and when it began. */
+/**
+ * The decision the Game is waiting on (a Turn's Picks, or one Low Card's Row) and when it
+ * starts: once the Reveal that led to it has played on the clients.
+ */
 export interface Decision {
   key: string;
   since: number;
+  /** Whether `since` has come and everyone has been told the decision started. */
+  started: boolean;
 }
 
 /** The whole persisted state of one Room. */
@@ -63,11 +69,13 @@ export interface RoomData {
   awaySince: Record<string, number>;
   /** Null outside a Game, and while the Game stands still because nobody is connected. */
   decision: Decision | null;
+  /** When the clients finish playing the Reveals of every move so far. */
+  revealEnds: number;
 }
 
-export type RoomResult = { ok: true; events: GameEvent[] } | { ok: false; error: ErrorCode };
+export type RoomResult = { ok: true; events: RoomEvent[] } | { ok: false; error: ErrorCode };
 
-const ok = (events: GameEvent[] = []): RoomResult => ({ ok: true, events });
+const ok = (events: RoomEvent[] = []): RoomResult => ({ ok: true, events });
 const fail = (error: ErrorCode): RoomResult => ({ ok: false, error });
 
 export function createRoom(code: string, now: number): RoomData {
@@ -88,6 +96,7 @@ export function createRoom(code: string, now: number): RoomData {
     lastActivity: now,
     awaySince: {},
     decision: null,
+    revealEnds: 0,
   };
 }
 
@@ -104,6 +113,8 @@ export function upgradeRoom(stored: RoomData): RoomData {
   room.totals = room.totals.map((t) => ({ ...t, bot: t.bot ?? false }));
   room.awaySince ??= {};
   room.decision ??= null;
+  if (room.decision) room.decision.started ??= true;
+  room.revealEnds ??= 0;
   delete (room as { deadline?: unknown }).deadline;
   return room;
 }
@@ -260,8 +271,13 @@ export function start(room: RoomData, memberId: string, seed: number): RoomResul
 
 export type PlayIntent = { type: 'pick'; card: number } | { type: 'chooseRow'; row: number };
 
-/** A seated Player's move in the running Game. */
-export function play(room: RoomData, memberId: string, intent: PlayIntent): RoomResult {
+/** A seated Player's move in the running Game, made at `now`. */
+export function play(
+  room: RoomData,
+  memberId: string,
+  intent: PlayIntent,
+  now: number,
+): RoomResult {
   if (room.phase !== 'game' || !room.game) return fail('wrong_phase');
   const seat = room.gameSeats.findIndex((s) => s.memberId === memberId);
   if (seat === -1) return fail('not_seated');
@@ -270,7 +286,7 @@ export function play(room: RoomData, memberId: string, intent: PlayIntent): Room
     intent.type === 'pick'
       ? { type: 'pick', seat, card: intent.card }
       : { type: 'chooseRow', seat, row: intent.row };
-  return apply(room, action);
+  return apply(room, action, now);
 }
 
 /**
@@ -299,12 +315,13 @@ export function isAway(room: RoomData, memberId: string): boolean {
 
 /**
  * Does whatever is due at `now`: passes Host on from an Away Host, keeps track of the
- * decision the Game waits on, and lets the Bot act for every Seat it is due for. While
- * nobody is connected the Game stands still. Returns the Game events this produced.
+ * decision the Game waits on and announces its start, and lets the Bot act for every Seat
+ * it is due for. While nobody is connected the Game stands still. Returns the events this
+ * produced.
  */
-export function tick(room: RoomData, now: number): GameEvent[] {
+export function tick(room: RoomData, now: number): RoomEvent[] {
   handOffHost(room, now);
-  const events: GameEvent[] = [];
+  const events: RoomEvent[] = [];
   if (room.phase !== 'game' || !room.game || !anyoneConnected(room)) {
     room.decision = null;
     return events;
@@ -312,10 +329,16 @@ export function tick(room: RoomData, now: number): GameEvent[] {
   for (;;) {
     refreshDecision(room, now);
     const game: GameState | null = room.game;
-    if (room.phase !== 'game' || !game) break;
+    const decision = room.decision;
+    if (room.phase !== 'game' || !game || !decision) break;
+    if (!decision.started) {
+      if (decision.since > now) break;
+      decision.started = true;
+      events.push(startEvent(game));
+    }
     const seat = waitingOn(game).find((s) => botDueAt(room, s) <= now);
     if (seat === undefined) break;
-    const result = apply(room, botAction(game, seat)!);
+    const result = apply(room, botAction(game, seat)!, now);
     if (!result.ok) throw new Error(`Bot move rejected: ${result.error}`);
     events.push(...result.events);
     room.lastActivity = now;
@@ -333,16 +356,19 @@ export function nextWakeup(room: RoomData, now: number): number {
     times.push(room.awaySince[room.hostId]! + GRACE_PERIOD_MS);
   }
   if (room.phase === 'game' && room.game) {
+    if (room.decision && !room.decision.started) times.push(room.decision.since);
     for (const seat of waitingOn(room.game)) times.push(botDueAt(room, seat));
   }
   const future = times.filter((t) => t > now);
   return future.length > 0 ? Math.min(...future) : expiry;
 }
 
-function apply(room: RoomData, action: Action): RoomResult {
+function apply(room: RoomData, action: Action, now: number): RoomResult {
   const result = applyAction(room.game!, action);
   if (!result.ok) return fail(result.error);
   room.game = result.state;
+  // Clients queue Reveals, so this one plays after any still playing.
+  room.revealEnds = Math.max(room.revealEnds, now) + revealMs(result.events);
   if (result.state.phase === 'gameOver') finishGame(room, result.state);
   return ok(result.events);
 }
@@ -357,7 +383,7 @@ export function pickDeadline(room: RoomData): number | null {
 /**
  * When the Bot makes Seat `seat`'s pending move: a Bot Seat after its thinking delay;
  * a Player's when the Pick Timer runs out or they have been Away for the Grace Period,
- * whichever comes first. Infinity if not at all.
+ * whichever comes first, but never before the decision starts. Infinity if not at all.
  */
 export function botDueAt(room: RoomData, seat: number): number {
   const { decision, game } = room;
@@ -366,14 +392,15 @@ export function botDueAt(room: RoomData, seat: number): number {
   const member = id === undefined ? undefined : memberById(room, id);
   if (!member || member.bot) return decision.since + botDelay(game.seed, decision.key, seat);
   const away = room.awaySince[member.id];
-  return Math.min(
+  const due = Math.min(
     pickDeadline(room) ?? Infinity,
     away === undefined ? Infinity : away + GRACE_PERIOD_MS,
   );
+  return Math.max(decision.since, due);
 }
 
 /**
- * A Bot Seat's thinking time for one decision: 2–6 s, varying by Seat and decision but
+ * A Bot Seat's thinking time for one decision: 1.5–4.5 s, varying by Seat and decision but
  * derived from the Game's seed, so a Game replays the same way.
  */
 export function botDelay(seed: number, key: string, seat: number): number {
@@ -384,7 +411,10 @@ export function botDelay(seed: number, key: string, seat: number): number {
   return BOT_DELAY_MIN_MS + (hash % (BOT_DELAY_MAX_MS - BOT_DELAY_MIN_MS + 1));
 }
 
-/** Notes when the Game moved on to a new decision; the clocks above count from there. */
+/**
+ * Notes when the Game moved on to a new decision. It starts once the Reveals so far have
+ * played, and the clocks above count from there.
+ */
 function refreshDecision(room: RoomData, now: number): void {
   const game = room.game;
   if (!game || game.phase === 'gameOver') {
@@ -396,7 +426,17 @@ function refreshDecision(room: RoomData, now: number): void {
     game.phase === 'picking'
       ? `${game.round}.${game.turn}`
       : `${game.round}.${game.turn}.${game.unplaced.length}`;
-  if (room.decision?.key !== key) room.decision = { key, since: now };
+  if (room.decision?.key !== key) {
+    room.decision = { key, since: Math.max(now, room.revealEnds), started: false };
+  }
+}
+
+/** The event announcing that `game`'s current decision has started. */
+function startEvent(game: GameState): RoomEvent {
+  const low = game.unplaced[0];
+  return game.phase === 'choosingRow' && low
+    ? { type: 'rowChoiceStarted', seat: low.seat, card: low.card }
+    : { type: 'turnStarted', round: game.round, turn: game.turn };
 }
 
 function handOffHost(room: RoomData, now: number): void {
