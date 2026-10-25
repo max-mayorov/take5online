@@ -8,7 +8,7 @@ interface Props {
   onPick: (card: Card) => void;
 }
 
-/** The viewer's Hand as a scrollable fan; the current Pick waits in the tray, not here. */
+/** The viewer's Hand, all in view at once; the current Pick waits in the tray, not here. */
 export function Hand({ hand, enabled, onPick }: Props) {
   return (
     <div className="hand" role="group" aria-label={t.yourHand}>
