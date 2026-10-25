@@ -42,6 +42,14 @@ test('one person plays a whole game against a bot', async ({ browser }) => {
   await endScore.blur();
   await page.getByRole('button', { name: 'Start game' }).click();
   await expect(page.locator('.hand .card-button')).toHaveCount(10);
+  // On a phone the whole Hand fits across the screen, so no Card hides off to the side.
+  const width = page.viewportSize()!.width;
+  for (const box of await page
+    .locator('.hand .card-button')
+    .evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect()))) {
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.right).toBeLessThanOrEqual(width);
+  }
   await expect(page.getByRole('timer')).toHaveAccessibleName(/\d+ seconds left to pick/);
   await expect(page.locator('.seat.bot')).toContainText('Bot 1');
 
