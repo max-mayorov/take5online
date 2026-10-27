@@ -350,7 +350,11 @@ async function chooseRowIfAsked(pages: Page[]) {
 async function act(page: Page, { tapContinue = true } = {}) {
   const next = page.getByRole('button', { name: 'Continue' });
   if (await next.isVisible()) {
-    if (tapContinue) await next.click();
+    if (!tapContinue) return;
+    await next.click();
+    // Wait for the tap to land, so the next call can't tap a Continue that is about to go: once
+    // the Summary closes, a click would wait for a Continue button that never comes back.
+    await expect(next).toHaveCount(0);
     return;
   }
   const row = page.locator('.board-row.choosable').first();
