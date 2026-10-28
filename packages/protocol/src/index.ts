@@ -351,3 +351,8 @@ export function messageVersion(data: unknown): number | null {
 export interface CreateRoomResponse {
   code: string;
 }
+
+/** `GET /api/flags`: PostHog feature flags, the same for everyone. A missing flag means its default. */
+export interface FlagsResponse {
+  flags: Record<string, boolean | string>;
+}

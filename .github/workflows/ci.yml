@@ -63,7 +63,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm --filter @take5/worker exec wrangler deploy
+      # Gives PostHog error tracking readable stack traces. A failed upload doesn't hold up the deploy.
+      - continue-on-error: true
+        run: |
+          if [ -z "$POSTHOG_CLI_API_KEY" ]; then
+            echo "::warning::No POSTHOG_CLI_API_KEY secret, so source maps were not uploaded to PostHog."
+            exit 0
+          fi
+          npx -y @posthog/cli@0.18.10 sourcemap inject --directory apps/web/dist
+          npx -y @posthog/cli@0.18.10 sourcemap upload --directory apps/web/dist \
+            --release-name take5online --release-version "$GITHUB_SHA"
+        env:
+          POSTHOG_CLI_HOST: https://eu.posthog.com
+          POSTHOG_CLI_PROJECT_ID: '317838'
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+      # Only production sends server-side events, exceptions and logs to PostHog (apps/worker/src/posthog.ts).
+      - run: pnpm --filter @take5/worker exec wrangler deploy --var POSTHOG:on
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

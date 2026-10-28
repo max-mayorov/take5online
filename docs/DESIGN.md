@@ -49,7 +49,7 @@ behind the bigger decisions lives in [adr/](./adr/).
 ```
 
 - **Worker** (`apps/worker`): serves the built SPA via Workers Static Assets, handles
-  `POST /api/rooms` (create a Room, rate-limited per IP) and routes `GET /ws/:code` WebSocket upgrades
+  `POST /api/rooms` (create a Room, rate-limited per IP), `GET /api/flags` (PostHog feature flags) and routes `GET /ws/:code` WebSocket upgrades
   to the Room's Durable Object (`idFromName(code)`).
 - **Room Durable Object**: the single authority for one Room. It holds the Lobby/Game/Results state,
   runs the engine, persists state in its SQLite-backed storage after every change, uses the WebSocket
@@ -63,7 +63,16 @@ behind the bigger decisions lives in [adr/](./adr/).
   blockers don't drop them. Nothing is stored in the browser for analytics, so there is no consent
   banner; the only browser storage is the seat token, the mute choice and an analytics opt-out, all
   strictly necessary. Off anywhere but take5.mayorov.dev (dev servers, PR previews), with Global
-  Privacy Control or Do Not Track, or after opting out on the privacy page. See [ADR-0009](./adr/0009-posthog-analytics.md).
+  Privacy Control or Do Not Track, or after opting out on the privacy page. Heatmaps, dead clicks and
+  Core Web Vitals work without storage too; session replay, surveys and per-person experiments don't,
+  so they are off. See [ADR-0009](./adr/0009-posthog-analytics.md).
+- **Server-side PostHog** (`apps/worker/src/posthog.ts`): the Worker and Room report their own
+  exceptions, OpenTelemetry logs and Room events (`worker_room_created`, `worker_game_started`,
+  `worker_game_ended`, `worker_room_expired`) with the Room Code and counts, never an IP, Nickname or
+  Member id. Feature flags are kill switches evaluated once for everyone by the Worker and cached for a
+  minute, so they work with analytics off. Only production sends or asks anything: CI deploys with
+  `--var POSTHOG:on`. CI also uploads the web app's source maps, which are not deployed. See
+  [ADR-0010](./adr/0010-server-side-posthog.md).
 - **Privacy notice** at `/privacy` (GDPR Art. 13), linked from the home page and the Nickname form. It
   names the controller, what each part of the site keeps and for how long, and holds the analytics
   opt-out switch. Update it whenever what the site collects changes.
