@@ -2,6 +2,7 @@ import { MAX_END_SCORE, MIN_END_SCORE, type Reaction, type RoomView } from '@tak
 import { useState, type FormEvent } from 'react';
 import { BullIcon } from './Card';
 import { useRoom, type LoggedEvent } from './connection';
+import { useFlag } from './flags';
 import { GameTable } from './GameTable';
 import { HostControls } from './HostControls';
 import { Floaters, ReactionPicker } from './Reactions';
@@ -74,6 +75,8 @@ function Header({
   onHome: () => void;
 }) {
   const muted = useMuted();
+  // A PostHog kill switch, in case Reactions are ever abused.
+  const reactions = useFlag('reactions');
   return (
     <header className="room-header">
       <button className="brand-button" onClick={onHome} aria-label={t.backHome}>
@@ -83,7 +86,7 @@ function Header({
       {reconnecting && <span className="badge">{t.reconnecting}</span>}
       <span className="header-tools">
         <RulesLink className="icon-button rules-link" />
-        {onReact && <ReactionPicker onReact={onReact} />}
+        {onReact && reactions && <ReactionPicker onReact={onReact} />}
         <button
           className="icon-button"
           onClick={() => setMuted(!muted)}

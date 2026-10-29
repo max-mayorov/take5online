@@ -1,0 +1,2 @@
+# Source maps go to PostHog in CI, not to visitors.
+*.map

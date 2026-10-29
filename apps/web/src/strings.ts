@@ -149,7 +149,7 @@ export const tControls = {
 export const tPrivacy = {
   link: 'Privacy',
   title: 'Privacy',
-  updated: 'Last updated 23 October 2026',
+  updated: 'Last updated 28 October 2026',
   intro:
     'take5online is a free hobby site for playing 6 nimmt! with friends. It has no accounts, no ads and no cookies. This page explains what data it handles, why, for how long, and your rights under the GDPR.',
   controllerHeading: 'Who is responsible',
@@ -178,9 +178,10 @@ export const tPrivacy = {
     {
       heading: 'Anonymous statistics and error reports',
       body: [
-        'To find bugs and see how the game is used, the site sends PostHog which pages are visited, which buttons are clicked (not their text), error details, and game events such as “game started” or “connection lost” with the room code and a random player id, plus your browser and device type. Your nickname is never sent.',
+        'To find bugs and see how the game is used, the site sends PostHog which pages are visited, which buttons are clicked (not their text) and where on the page, clicks that did nothing, how quickly pages load and respond, error details, and game events such as “game started” or “connection lost” with the room code and a random player id, plus your browser and device type. Your nickname is never sent.',
         'PostHog runs in cookieless mode: nothing is stored on your device. To count visitors, PostHog turns your IP address and browser details, mixed with a random value that changes every day, into a one-way code, and does not keep the IP address. The data is stored in PostHog’s EU region in Frankfurt, Germany, and deleted after at most one year.',
         'This is based on the legitimate interest in keeping the game working (GDPR Art. 6(1)(f)). You can object at any time with the switch below. It is also off if your browser sends Global Privacy Control or Do Not Track.',
+        'The game server also tells PostHog when a room is created or expires and when a game starts or ends, with the room code and how many players and bots took part, and sends it its own errors and log messages. These never include an IP address, nickname or player id. The site also asks PostHog which features are switched on; that request comes from the server and says nothing about you.',
       ],
     },
     {

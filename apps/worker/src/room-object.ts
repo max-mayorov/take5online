@@ -10,6 +10,7 @@ import {
   type ErrorCode,
   type Reaction,
   type RoomEvent,
+  type RoomPhase,
   type ServerMessage,
 } from '@take5/protocol';
 import {
@@ -38,6 +39,7 @@ import {
   type RoomResult,
 } from './room';
 import type { Env } from './env';
+import { Telemetry } from './posthog';
 
 export { ROOM_TTL_MS } from './room';
 
@@ -57,22 +59,32 @@ export class RoomObject extends DurableObject<Env> {
   private room: RoomData | null = null;
   /** Recent Reaction times per member, for rate limiting; losing it on hibernation is fine. */
   private reactionTimes = new Map<string, number[]>();
+  /** The phase last reported to PostHog, so each Game's start and end is reported once. */
+  private phase: RoomPhase | null = null;
+  private readonly telemetry: Telemetry;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.telemetry = new Telemetry(env, (promise) => ctx.waitUntil(promise));
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     void ctx.blockConcurrencyWhile(async () => {
       const stored = await ctx.storage.get<RoomData>('room');
       this.room = stored ? upgradeRoom(stored) : null;
+      this.phase = this.room?.phase ?? null;
     });
   }
 
   /** Creates the Room under this code; false if the code is already in use. */
   async create(code: string): Promise<boolean> {
-    if (this.room) return false;
-    this.room = createRoom(code, Date.now());
-    await this.commit([]);
-    return true;
+    return this.reportingErrors(async () => {
+      if (this.room) return false;
+      this.room = createRoom(code, Date.now());
+      this.phase = this.room.phase;
+      await this.commit([]);
+      this.telemetry.capture('worker_room_created', { room_code: code });
+      this.telemetry.log('info', 'Room created', { room_code: code });
+      return true;
+    });
   }
 
   async exists(): Promise<boolean> {
@@ -94,6 +106,10 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   override async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
+    return this.reportingErrors(() => this.message(ws, raw));
+  }
+
+  private async message(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     const room = this.room;
     if (!room) return sendError(ws, 'room_not_found');
 
@@ -101,13 +117,19 @@ export class RoomObject extends DurableObject<Env> {
     try {
       data = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
     } catch {
+      this.telemetry.log('warn', 'Message is not JSON', { room_code: room.code });
       return sendError(ws, 'bad_message');
     }
     if (messageVersion(data) !== PROTOCOL_VERSION) {
       return send(ws, { v: PROTOCOL_VERSION, type: 'reload' });
     }
     const parsed = clientMessageSchema.safeParse(data);
-    if (!parsed.success) return sendError(ws, 'bad_message');
+    if (!parsed.success) {
+      this.telemetry.log('warn', `Bad message: ${parsed.error.message.slice(0, 500)}`, {
+        room_code: room.code,
+      });
+      return sendError(ws, 'bad_message');
+    }
     const message = parsed.data;
 
     const { memberId } = ws.deserializeAttachment() as Attachment;
@@ -122,22 +144,63 @@ export class RoomObject extends DurableObject<Env> {
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    await this.commit([], ws);
+    await this.reportingErrors(() => this.commit([], ws));
   }
 
   override async webSocketError(ws: WebSocket): Promise<void> {
-    await this.commit([], ws);
+    await this.reportingErrors(() => this.commit([], ws));
   }
 
   override async alarm(): Promise<void> {
-    const room = this.room;
-    if (room && Date.now() - room.lastActivity < ROOM_TTL_MS) {
-      await this.commit([]);
-      return;
+    return this.reportingErrors(async () => {
+      const room = this.room;
+      if (room && Date.now() - room.lastActivity < ROOM_TTL_MS) {
+        await this.commit([]);
+        return;
+      }
+      for (const ws of this.ctx.getWebSockets()) ws.close(4004, 'room_expired');
+      this.room = null;
+      await this.ctx.storage.deleteAll();
+      if (room) {
+        const games = Math.max(0, ...room.totals.map((total) => total.games));
+        this.telemetry.capture('worker_room_expired', { room_code: room.code, games });
+        this.telemetry.log('info', 'Room expired', { room_code: room.code, games });
+      }
+    });
+  }
+
+  /** Reports an error to PostHog, then lets it fail the call as before. */
+  private async reportingErrors<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      this.telemetry.captureException(error, this.room ? { room_code: this.room.code } : {});
+      throw error;
     }
-    for (const ws of this.ctx.getWebSockets()) ws.close(4004, 'room_expired');
-    this.room = null;
-    await this.ctx.storage.deleteAll();
+  }
+
+  /** Reports each Game's start and end, so they are counted even when no browser reports them. */
+  private notePhase(room: RoomData): void {
+    if (room.phase === this.phase) return;
+    this.phase = room.phase;
+    const properties = {
+      room_code: room.code,
+      players: room.gameSeats.filter((seat) => !seat.bot).length,
+      bots: room.gameSeats.filter((seat) => seat.bot).length,
+    };
+    if (room.phase === 'game') {
+      this.telemetry.capture('worker_game_started', {
+        ...properties,
+        end_score: room.settings.endScore,
+        pick_timer: room.settings.pickTimer,
+      });
+      this.telemetry.log('info', 'Game started', properties);
+    }
+    if (room.phase === 'results') {
+      const rounds = room.game?.round ?? 0;
+      this.telemetry.capture('worker_game_ended', { ...properties, rounds });
+      this.telemetry.log('info', 'Game ended', { ...properties, rounds });
+    }
   }
 
   private async hello(
@@ -228,6 +291,7 @@ export class RoomObject extends DurableObject<Env> {
     const now = Date.now();
     syncPresence(room, this.connected(closing), now);
     events.push(...tick(room, now));
+    this.notePhase(room);
     await this.ctx.storage.put('room', room);
     await this.ctx.storage.setAlarm(nextWakeup(room, now));
     this.broadcast(events, now, closing);

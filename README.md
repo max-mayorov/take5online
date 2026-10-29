@@ -55,3 +55,9 @@ Both need two repository secrets:
 - `CLOUDFLARE_API_TOKEN`: an account API token from the **Edit Cloudflare Workers** template, with
   its zone resources including `mayorov.dev` (the custom domain needs **Zone → Workers Routes → Edit**).
 - `CLOUDFLARE_ACCOUNT_ID`: the account id from the Cloudflare dashboard.
+
+Deploys also upload the web app's source maps to PostHog error tracking when the optional
+`POSTHOG_CLI_API_KEY` secret is set: a PostHog personal API key with the **Error tracking: write** and
+**Organization: read** scopes. Without it, the deploy warns and goes ahead. Only `wrangler deploy --var
+POSTHOG:on`, as CI runs it, makes the Worker send events, logs and exceptions to PostHog and read its
+feature flags.

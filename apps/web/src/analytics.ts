@@ -51,6 +51,13 @@ export function initAnalytics(): void {
       mask_all_text: true,
       mask_all_element_attributes: true,
       capture_exceptions: true,
+      // These need no browser storage either: where people click (heatmaps, and clicks that do
+      // nothing), and Core Web Vitals.
+      capture_heatmaps: true,
+      capture_dead_clicks: true,
+      capture_performance: { web_vitals: true },
+      // Feature flags come from the Worker for everyone (see flags.ts), not per visitor.
+      advanced_disable_feature_flags: true,
       // Opting out must stop events at once; cookieless mode ignores PostHog's own opt-out.
       before_send: (event) => (analyticsOn() ? event : null),
     });

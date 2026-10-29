@@ -3,6 +3,7 @@ import { runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BOT_DELAY_MAX_MS, GRACE_PERIOD_MS, pickDeadline, type RoomData } from '../src/room';
 import type { RoomObject } from '../src/room-object';
+import { evaluateFlags, stackFrames, Telemetry } from '../src/posthog';
 import { REACTION_LIMIT, type ClientIntent } from '@take5/protocol';
 import { Client, createRoom, isError, isReaction, isState, isWelcome } from './client';
 
@@ -73,6 +74,83 @@ describe('PostHog proxy', () => {
     const sent = upstream();
     await exports.default.fetch('http://test/relay/static/recorder.js?v=1');
     expect(sent().url).toBe('https://eu-assets.i.posthog.com/static/recorder.js?v=1');
+  });
+});
+
+describe('PostHog from the Worker', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const production = { ...env, POSTHOG: 'on' };
+  const posthog = (body: unknown = {}) =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(body));
+  const telemetry = (environment: typeof env) => {
+    const pending: Promise<unknown>[] = [];
+    return { telemetry: new Telemetry(environment, (p) => pending.push(p)), pending };
+  };
+  const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
+
+  it('sends nothing outside production', async () => {
+    const spy = posthog();
+    const { telemetry: t, pending } = telemetry(env);
+    t.capture('worker_room_created', { room_code: 'ABCD' });
+    t.log('info', 'Room created');
+    t.captureException(new Error('boom'));
+    expect(pending).toEqual([]);
+    const response = await exports.default.fetch('http://test/api/flags');
+    expect(await response.json()).toEqual({ flags: {} });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('captures Room events without a person profile or location', async () => {
+    const spy = posthog();
+    const { telemetry: t, pending } = telemetry(production);
+    t.capture('worker_game_ended', { room_code: 'ABCD', players: 3 });
+    await Promise.all(pending);
+    expect(String(spy.mock.calls[0]![0])).toBe('https://eu.i.posthog.com/i/v0/e/');
+    expect(bodyOf(spy.mock.calls[0]!)).toMatchObject({
+      event: 'worker_game_ended',
+      distinct_id: 'room:ABCD',
+      properties: { room_code: 'ABCD', players: 3, $process_person_profile: false },
+    });
+  });
+
+  it('reports exceptions with their stack, and logs them', async () => {
+    const spy = posthog();
+    const { telemetry: t, pending } = telemetry(production);
+    t.captureException(new TypeError('nope'), { room_code: 'ABCD' });
+    await Promise.all(pending);
+    const [exception, log] = spy.mock.calls.map(bodyOf);
+    expect(exception.event).toBe('$exception');
+    expect(exception.properties.$exception_list[0]).toMatchObject({
+      type: 'TypeError',
+      value: 'nope',
+    });
+    expect(exception.properties.$exception_list[0].stacktrace.frames.length).toBeGreaterThan(0);
+    expect(String(spy.mock.calls[1]![0])).toBe('https://eu.i.posthog.com/i/v1/logs');
+    expect(log.resourceLogs[0].scopeLogs[0].logRecords[0]).toMatchObject({
+      severityText: 'ERROR',
+      body: { stringValue: 'TypeError: nope' },
+      attributes: [{ key: 'room_code', value: { stringValue: 'ABCD' } }],
+    });
+  });
+
+  it('reads V8 stack frames, outermost call first', () => {
+    const frames = stackFrames(
+      'Error: x\n    at commit (index.js:10:5)\n    at async alarm (index.js:20:7)\n    at index.js:30:1',
+    );
+    expect(frames.map((f) => [f.function, f.lineno, f.colno])).toEqual([
+      ['?', 30, 1],
+      ['async alarm', 20, 7],
+      ['commit', 10, 5],
+    ]);
+  });
+
+  it('evaluates flags once for everyone, keeping variants', async () => {
+    const spy = posthog({
+      flags: { reactions: { enabled: false }, layout: { enabled: true, variant: 'compact' } },
+    });
+    expect(await evaluateFlags(production)).toEqual({ reactions: false, layout: 'compact' });
+    expect(bodyOf(spy.mock.calls[0]!)).toMatchObject({ distinct_id: 'everyone' });
   });
 });
 
