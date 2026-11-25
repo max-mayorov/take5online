@@ -154,7 +154,7 @@ export const tPrivacy = {
     'take5online is a free hobby site for playing 6 nimmt! with friends. It has no accounts, no ads and no cookies. This page explains what data it handles, why, for how long, and your rights under the GDPR.',
   controllerHeading: 'Who is responsible',
   controller: 'Max Mayorov runs this site and is responsible for your data. Contact:',
-  contactEmail: 'max.mayorov@live.com',
+  contactEmail: 'max@mayorov.dev',
   sections: [
     {
       heading: 'Playing a game',
